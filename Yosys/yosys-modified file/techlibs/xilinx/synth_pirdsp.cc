@@ -9,7 +9,7 @@
 #include "kernel/log.h"
 
 USING_YOSYS_NAMESPACE
-PRIVATE_NAMESPACE_BEGIN
+  PRIVATE_NAMESPACE_BEGIN
 
 struct SynthPirdspPass : public ScriptPass
 {
@@ -35,8 +35,8 @@ struct SynthPirdspPass : public ScriptPass
 		log("        generate the synthesis netlist for the specified family.\n");
 		log("        supported values:\n");
 		log(" 	     - xcu \n");
-		log(" 	     - pirdsp \n");
-		log(" 	     - apirdsp \n");
+		log(" 	     - pirdsp \n"); 
+                log(" 	     - apirdsp \n");
 		log("\n");
 		log("    -edif <file>\n");
 		log("        write the design to the specified edif file. writing of an output file\n");
@@ -134,7 +134,7 @@ struct SynthPirdspPass : public ScriptPass
 		lut_size = 6;
 	}
 
-	void execute(std::vector<std::string> args, RTLIL::Design* design) override
+	void execute(std::vector<std::string> args, RTLIL::Design *design) override
 	{
 		std::string run_from, run_to;
 		clear_flags();
@@ -142,28 +142,28 @@ struct SynthPirdspPass : public ScriptPass
 		size_t argidx;
 		for (argidx = 1; argidx < args.size(); argidx++)
 		{
-			if (args[argidx] == "-top" && argidx + 1 < args.size()) {
+			if (args[argidx] == "-top" && argidx+1 < args.size()) {
 				top_opt = "-top " + args[++argidx];
 				continue;
 			}
-			if ((args[argidx] == "-family" || args[argidx] == "-arch") && argidx + 1 < args.size()) {
+			if ((args[argidx] == "-family" || args[argidx] == "-arch") && argidx+1 < args.size()) {
 				family = args[++argidx];
 				continue;
 			}
-			if (args[argidx] == "-edif" && argidx + 1 < args.size()) {
+			if (args[argidx] == "-edif" && argidx+1 < args.size()) {
 				edif_file = args[++argidx];
 				continue;
 			}
-			if (args[argidx] == "-blif" && argidx + 1 < args.size()) {
+			if (args[argidx] == "-blif" && argidx+1 < args.size()) {
 				blif_file = args[++argidx];
 				continue;
 			}
-			if (args[argidx] == "-run" && argidx + 1 < args.size()) {
-				size_t pos = args[argidx + 1].find(':');
+			if (args[argidx] == "-run" && argidx+1 < args.size()) {
+				size_t pos = args[argidx+1].find(':');
 				if (pos == std::string::npos)
 					break;
 				run_from = args[++argidx].substr(0, pos);
-				run_to = args[argidx].substr(pos + 1);
+				run_to = args[argidx].substr(pos+1);
 				continue;
 			}
 			if (args[argidx] == "-flatten") {
@@ -218,7 +218,7 @@ struct SynthPirdspPass : public ScriptPass
 				nosrl = true;
 				continue;
 			}
-			if (args[argidx] == "-widemux" && argidx + 1 < args.size()) {
+			if (args[argidx] == "-widemux" && argidx+1 < args.size()) {
 				widemux = atoi(args[++argidx].c_str());
 				continue;
 			}
@@ -241,8 +241,7 @@ struct SynthPirdspPass : public ScriptPass
 		if (family == "pirdsp" || family == "xcu" || family == "apirdsp") {
 			lut_size = 6;
 			widelut_size = 9;
-		}
-		else
+		} else
 			log_cmd_error("Invalid -family setting: '%s'.\n", family.c_str());
 
 		if (widemux != 0 && lut_size != 6)
@@ -307,42 +306,42 @@ struct SynthPirdspPass : public ScriptPass
 			else if (family == "pirdsp" || family == "apirdsp") {
 				run("techmap -map +/mul2dsp.v -D DSP_A_MAXWIDTH=27 -D DSP_B_MAXWIDTH=27 "
 
-					"-D DSP_A_MINWIDTH=10 -D DSP_B_MINWIDTH=10 " // Blocks Nx1 multipliers
-					"-D DSP_Y_MINWIDTH=20 "			 // UG901 suggests small multiplies are those 4x4 and smaller
-					//   "-D DSP_SIGNEDONLY=1 -D DSP_NAME=MULT54X54");
-					"-D DSP_NAME=MULT54X54");
+				    "-D DSP_A_MINWIDTH=10 -D DSP_B_MINWIDTH=10 " // Blocks Nx1 multipliers
+				    "-D DSP_Y_MINWIDTH=20 "			 // UG901 suggests small multiplies are those 4x4 and smaller
+				    //   "-D DSP_SIGNEDONLY=1 -D DSP_NAME=MULT54X54");
+				    "-D DSP_NAME=MULT54X54");
 				run("stat");
 				run("chtype -set $mul t:$__soft_mul");
 				run("techmap -map +/mul2dsp.v -D DSP_A_MAXWIDTH=9 -D DSP_B_MAXWIDTH=9 "
 
-					"-D DSP_A_MINWIDTH=6 -D DSP_B_MINWIDTH=6 " // Blocks Nx1 multipliers
-					"-D DSP_Y_MINWIDTH=10 "		       // UG901 suggests small multiplies are those 4x4 and smaller
-					//  "-D DSP_SIGNEDONLY=0 -D DSP_NAME=$__MULT9X9");
-					"-D DSP_NAME=$__MULT9X9");
+				    "-D DSP_A_MINWIDTH=6 -D DSP_B_MINWIDTH=6 " // Blocks Nx1 multipliers
+				    "-D DSP_Y_MINWIDTH=10 "		       // UG901 suggests small multiplies are those 4x4 and smaller
+				    //  "-D DSP_SIGNEDONLY=0 -D DSP_NAME=$__MULT9X9");
+				    "-D DSP_NAME=$__MULT9X9");
 				run("stat");
-				run("show");
+				//run("show");
 				run("chtype -set $mul t:$__soft_mul");
-				run("techmap -map +/mul2dsp.v -D DSP_A_MAXWIDTH=5 -D DSP_B_MAXWIDTH=5 "
+				//run("techmap -map +/mul2dsp.v -D DSP_A_MAXWIDTH=5 -D DSP_B_MAXWIDTH=5 "
 
-					"-D DSP_A_MINWIDTH=2 -D DSP_B_MINWIDTH=2 " // Blocks Nx1 multipliers
-					"-D DSP_Y_MINWIDTH=4 "		       // UG901 suggests small multiplies are those 4x4 and smaller
-					//  "-D DSP_SIGNEDONLY=0 -D DSP_NAME=$__MULT9X9");
-					"-D DSP_NAME=$__MULT4X4");
-				run("stat");
-				run("show");
-				run("chtype -set $mul t:$__soft_mul");
+				  //  "-D DSP_A_MINWIDTH=2 -D DSP_B_MINWIDTH=2 " // Blocks Nx1 multipliers
+				  ///  "-D DSP_Y_MINWIDTH=6 "		       // UG901 suggests small multiplies are those 4x4 and smaller
+				    //  "-D DSP_SIGNEDONLY=0 -D DSP_NAME=$__MULT9X9");
+				 //   "-D DSP_NAME=$__MULT4X4");
+				//run("stat");
+				//run("show");
+				//run("chtype -set $mul t:$__soft_mul");
 			}
 			else if (family == "xcu") {
 				run("techmap -map +/mul2dsp.v -D DSP_A_MAXWIDTH=27 -D DSP_B_MAXWIDTH=18 "
-					"-D DSP_A_MAXWIDTH_PARTIAL=18 " // Partial multipliers are intentionally
-					// limited to 18x18 in order to take
-					// advantage of the (PCOUT << 17) -> PCIN
-					// dedicated cascade chain capability
-					"-D DSP_A_MINWIDTH=2 -D DSP_B_MINWIDTH=2 " // Blocks Nx1 multipliers
-					"-D DSP_Y_MINWIDTH=9 "		       // UG901 suggests small multiplies are those 4x4 and smaller
-					//"-D DSP_SIGNEDONLY=1 -D DSP_NAME=$__MUL27X18");
-					"-D DSP_NAME=$__MUL27X18");
-				run("show");
+				    "-D DSP_A_MAXWIDTH_PARTIAL=18 " // Partial multipliers are intentionally
+				    // limited to 18x18 in order to take
+				    // advantage of the (PCOUT << 17) -> PCIN
+				    // dedicated cascade chain capability
+				    "-D DSP_A_MINWIDTH=2 -D DSP_B_MINWIDTH=2 " // Blocks Nx1 multipliers
+				    "-D DSP_Y_MINWIDTH=9 "		       // UG901 suggests small multiplies are those 4x4 and smaller
+				    //"-D DSP_SIGNEDONLY=1 -D DSP_NAME=$__MUL27X18");
+				    "-D DSP_NAME=$__MUL27X18");
+				//run("show");
 			}
 			//run("connwrappers -signed $__MULT9X9 Y Y_WIDTH");
 			run("stat");
@@ -352,28 +351,28 @@ struct SynthPirdspPass : public ScriptPass
 			run("wreduce");
 			run("select -clear");
 
-			if (family == "pirdsp" || family == "apirdsp") {
+			if(family == "pirdsp" || family == "apirdsp") {
 
 				run("design -push");
 				run("read_verilog +/pirdsp/multimult_9X9.v");
 				//run("techmap -map +/pirdsp/mult9X9.v");
 				run("techmap -map +/mul2dsp.v -D DSP_A_MAXWIDTH=9 -D DSP_B_MAXWIDTH=9 "
-					"-D DSP_A_MINWIDTH=6 -D DSP_B_MINWIDTH=6 "
-					"-D DSP_Y_MINWIDTH=10 "
-					//  "-D DSP_SIGNEDONLY=0 -D DSP_NAME=$__MULT9X9");
-					"-D DSP_NAME=$__MULT9X9");
+				    "-D DSP_A_MINWIDTH=6 -D DSP_B_MINWIDTH=6 "
+				    "-D DSP_Y_MINWIDTH=10 "
+				    //  "-D DSP_SIGNEDONLY=0 -D DSP_NAME=$__MULT9X9");
+				    "-D DSP_NAME=$__MULT9X9");
 				run("design -save __multimult_9X9");
 				run("design -pop");
 				run("extract -constports -ignore_parameters -map %__multimult_9X9");
 				run("stat");
 
-				run("design -push");
+				/*run("design -push");
 				run("read_verilog +/pirdsp/multimult_4X4.v");
 				run("techmap -map +/mul2dsp.v -D DSP_A_MAXWIDTH=5 -D DSP_B_MAXWIDTH=5 "
-					"-D DSP_A_MINWIDTH=2 -D DSP_B_MINWIDTH=2 "
-					"-D DSP_Y_MINWIDTH=4 "
-					//  "-D DSP_SIGNEDONLY=0 -D DSP_NAME=$__MULT9X9");
-					"-D DSP_NAME=$__MULT4X4");
+				    "-D DSP_A_MINWIDTH=2 -D DSP_B_MINWIDTH=2 "
+				    "-D DSP_Y_MINWIDTH=4 "
+				    //  "-D DSP_SIGNEDONLY=0 -D DSP_NAME=$__MULT9X9");
+				    "-D DSP_NAME=$__MULT4X4");
 				run("design -save __multimult_4X4");
 				run("stat");
 				run("design -pop");
@@ -381,7 +380,7 @@ struct SynthPirdspPass : public ScriptPass
 				run("stat");
 
 				run("opt_clean");
-				run("extract -constports -ignore_parameters -map +/pirdsp/A_FIFO.v");
+				run("extract -constports -ignore_parameters -map +/pirdsp/A_FIFO.v");*/
 
 			}
 			//run("show");
@@ -410,7 +409,7 @@ struct SynthPirdspPass : public ScriptPass
 				run("clean", "      (skip if '-nosrl' and '-widemux=0')");
 			}
 			run("stat");
-			run("show");
+			//run("show");
 		}
 
 		if (check_label("map_dsp", "(skip if '-nodsp')")) {
@@ -426,14 +425,14 @@ struct SynthPirdspPass : public ScriptPass
 				else if (family == "xcu")
 					run("techmap -map +/xilinx/xcu_dsp_map.v ");
 				run("stat");
-				run("show");
+				//run("show");
 
 				if (help_mode)
 					run("debug xilinx_dsp -family <family>");
 				else
 					run("debug xilinx_dsp -family " + family);
 				run("stat");
-				run("show");
+				//run("show");
 				run("chtype -set $mul t:$__soft_mul");
 			}
 		}
@@ -451,13 +450,11 @@ struct SynthPirdspPass : public ScriptPass
 			if (help_mode) {
 				run("memory_bram -rules +/xilinx/{family}_urams.txt");
 				run("techmap -map +/xilinx/{family}_urams_map.v");
-			}
-			else if (uram) {
+			} else if (uram) {
 				if (family == "pirdsp" || family == "xcu" || family == "apirdsp") {
 					run("memory_bram -rules +/xilinx/xcup_urams.txt");
 					run("techmap -map +/xilinx/xcup_urams_map.v");
-				}
-				else {
+				} else {
 					log_warning("UltraRAM inference not supported for family %s.\n", family.c_str());
 				}
 			}
@@ -467,13 +464,11 @@ struct SynthPirdspPass : public ScriptPass
 			if (help_mode) {
 				run("memory_bram -rules +/xilinx/{family}_brams.txt");
 				run("techmap -map +/xilinx/{family}_brams_map.v");
-			}
-			else if (!nobram) {
+			} else if (!nobram) {
 				if (family == "pirdsp" || family == "xcu" || family == "apirdsp") {
 					run("memory_bram -rules +/xilinx/xc7_xcu_brams.txt");
 					run("techmap -map +/xilinx/xcu_brams_map.v");
-				}
-				else {
+				} else {
 					log_warning("Block RAM inference not yet supported for family %s.\n", family.c_str());
 				}
 			}
@@ -490,8 +485,7 @@ struct SynthPirdspPass : public ScriptPass
 			if (widemux > 0) {
 				run("opt -fast -mux_bool -undriven -fine"); // Necessary to omit -mux_undef otherwise muxcover
 				// performs less efficiently
-			}
-			else {
+			} else {
 				run("opt -fast -full");
 			}
 			run("memory_map");
@@ -501,19 +495,18 @@ struct SynthPirdspPass : public ScriptPass
 			if (help_mode) {
 				run("simplemap t:$mux", "('-widemux' only)");
 				run("muxcover <internal options>", "('-widemux' only)");
-			}
-			else if (widemux > 0) {
+			} else if (widemux > 0) {
 				run("simplemap t:$mux");
 				constexpr int cost_mux2 = 100;
 				std::string muxcover_args = stringf(" -nodecode -mux2=%d", cost_mux2);
 				switch (widemux) {
-				case  2: muxcover_args += stringf(" -mux4=%d -mux8=%d -mux16=%d", cost_mux2 + 1, cost_mux2 + 2, cost_mux2 + 3); break;
+				case  2: muxcover_args += stringf(" -mux4=%d -mux8=%d -mux16=%d", cost_mux2+1, cost_mux2+2, cost_mux2+3); break;
 				case  3:
-				case  4: muxcover_args += stringf(" -mux4=%d -mux8=%d -mux16=%d", cost_mux2 * (widemux - 1) - 2, cost_mux2 * (widemux - 1) - 1, cost_mux2 * (widemux - 1)); break;
+				case  4: muxcover_args += stringf(" -mux4=%d -mux8=%d -mux16=%d", cost_mux2*(widemux-1)-2, cost_mux2*(widemux-1)-1, cost_mux2*(widemux-1)); break;
 				case  5:
 				case  6:
 				case  7:
-				case  8: muxcover_args += stringf(" -mux8=%d -mux16=%d", cost_mux2 * (widemux - 1) - 1, cost_mux2 * (widemux - 1)); break;
+				case  8: muxcover_args += stringf(" -mux8=%d -mux16=%d", cost_mux2*(widemux-1)-1, cost_mux2*(widemux-1)); break;
 				case  9:
 				case 10:
 				case 11:
@@ -521,7 +514,7 @@ struct SynthPirdspPass : public ScriptPass
 				case 13:
 				case 14:
 				case 15:
-				default: muxcover_args += stringf(" -mux16=%d", cost_mux2 * (widemux - 1) - 1); break;
+				default: muxcover_args += stringf(" -mux16=%d", cost_mux2*(widemux-1)-1); break;
 				}
 				run("muxcover " + muxcover_args);
 			}
@@ -554,11 +547,11 @@ struct SynthPirdspPass : public ScriptPass
 		}
 
 		if (check_label("map_ffs")) {
-			if (family == "pirdsp" || family == "xcu" || family == "apirdsp")
+			if (family == "pirdsp" || family == "xcu" ||family == "apirdsp")
 				run("dfflegalize -cell $_DFFE_?P?P_ 01 -cell $_SDFFE_?P?P_ 01 -cell $_DLATCH_?P?_ 01");
 			else
 				run("dfflegalize -cell $_DFFE_?P?P_ 01 -cell $_DFFSRE_?PPP_ 01 -cell $_SDFFE_?P?P_ 01 -cell $_DLATCH_?P?_ 01 -cell $_DLATCHSR_?PP_ 01", "(for xc5v and older)");
-			if (help_mode) {
+			if ( help_mode) {
 				if (dff || help_mode)
 					run("zinit -all w:* t:$_SDFFE_*", "('-dff' only)");
 				//run("techmap -map +/xilinx/ff_map.v", "('-abc9' only)");
@@ -571,27 +564,27 @@ struct SynthPirdspPass : public ScriptPass
 				run("flatten");
 			if (help_mode)
 				run("abc -luts 2:2,3,6:5[,10,20] [-dff] [-D 1]", "(option for '-nowidelut', '-dff', '-retime')");
-			/*else if (abc9) {
-				if (lut_size != 6)
-					log_error("'synth_xilinx -abc9' not currently supported for LUT4-based devices.\n");
-				if (family != "xc7")
-					log_warning("'synth_xilinx -abc9' not currently supported for the '%s' family, "
-							"will use timing for 'xc7' instead.\n", family.c_str());
-				run("read_verilog -icells -lib -specify +/xilinx/abc9_model.v");
-				std::string abc9_opts;
-				std::string k = "synth_xilinx.abc9.W";
-				if (active_design && active_design->scratchpad.count(k))
-					abc9_opts += stringf(" -W %s", active_design->scratchpad_get_string(k).c_str());
-				else {
-					k = stringf("synth_xilinx.abc9.%s.W", family.c_str());
-					abc9_opts += stringf(" -W %s", RTLIL::constpad.at(k, RTLIL::constpad.at("synth_xilinx.abc9.xc7.W")).c_str());
-				}
-				if (nowidelut)
-					abc9_opts += stringf(" -maxlut %d", lut_size);
-				if (dff)
-					abc9_opts += " -dff";
-				run("abc9" + abc9_opts + " -nocleanup");
-			}*/
+				/*else if (abc9) {
+					if (lut_size != 6)
+						log_error("'synth_xilinx -abc9' not currently supported for LUT4-based devices.\n");
+					if (family != "xc7")
+						log_warning("'synth_xilinx -abc9' not currently supported for the '%s' family, "
+							    "will use timing for 'xc7' instead.\n", family.c_str());
+					run("read_verilog -icells -lib -specify +/xilinx/abc9_model.v");
+					std::string abc9_opts;
+					std::string k = "synth_xilinx.abc9.W";
+					if (active_design && active_design->scratchpad.count(k))
+						abc9_opts += stringf(" -W %s", active_design->scratchpad_get_string(k).c_str());
+					else {
+						k = stringf("synth_xilinx.abc9.%s.W", family.c_str());
+						abc9_opts += stringf(" -W %s", RTLIL::constpad.at(k, RTLIL::constpad.at("synth_xilinx.abc9.xc7.W")).c_str());
+					}
+					if (nowidelut)
+						abc9_opts += stringf(" -maxlut %d", lut_size);
+					if (dff)
+						abc9_opts += " -dff";
+					run("abc9" + abc9_opts + " -nocleanup");
+				}*/
 			else {
 				std::string abc_opts;
 				if (lut_size != 6) {
@@ -599,14 +592,15 @@ struct SynthPirdspPass : public ScriptPass
 						abc_opts += " -lut " + lut_size_s;
 					else
 						abc_opts += " -lut " + lut_size_s + ":" + std::to_string(widelut_size);
-				}
-				else {
+				} else {
 					if (nowidelut)
 						abc_opts += " -luts 2:2,3,6:5";
 					else if (widelut_size == 8)
-						abc_opts += " -luts 2:2,3,6:5,10,20";
+						//abc_opts += " -luts 2:2,3,6:5,10,20";
+						abc_opts += " -luts 2:2,3,6:5";
 					else
-						abc_opts += " -luts 2:2,3,6:5,10,20,40";
+						//abc_opts += " -luts 2:2,3,6:5,10,20,40";
+						abc_opts += " -luts 2:2,3,6:5";
 				}
 				if (dff)
 					abc_opts += " -dff";
@@ -621,8 +615,8 @@ struct SynthPirdspPass : public ScriptPass
 			//   has performed any necessary retiming
 			if (!nosrl || help_mode)
 				run("xilinx_srl -fixed -minlen 3", "(skip if '-nosrl')");
-			//			std::string techmap_args = "-map +/xilinx/lut_map.v -map +/xilinx/cells_map.v";
-			//			modify
+//			std::string techmap_args = "-map +/xilinx/lut_map.v -map +/xilinx/cells_map.v";
+//			modify
 			std::string techmap_args = "-map +/xilinx/cells_map.v";
 
 			techmap_args += " -D LUT_WIDTH=" + lut_size_s;

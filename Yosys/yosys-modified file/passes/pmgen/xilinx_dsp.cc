@@ -27,7 +27,7 @@
 #include <deque>
 
 USING_YOSYS_NAMESPACE
-PRIVATE_NAMESPACE_BEGIN
+  PRIVATE_NAMESPACE_BEGIN
 
 #include "passes/pmgen/xilinx_dsp_pm.h"
 #include "passes/pmgen/xilinx_dsp48a_pm.h"
@@ -38,8 +38,8 @@ PRIVATE_NAMESPACE_BEGIN
 
 #include "passes/pmgen/pirdsp_pm.h"
 
-static Cell* addDsp(Module* module) {
-	Cell* cell = module->addCell(NEW_ID, ID(DSP48E1));
+static Cell* addDsp(Module *module) {
+	Cell *cell = module->addCell(NEW_ID, ID(DSP48E1));
 	cell->setParam(ID(ACASCREG), 0);
 	cell->setParam(ID(ADREG), 0);
 	cell->setParam(ID(A_INPUT), Const("DIRECT"));
@@ -72,7 +72,7 @@ static Cell* addDsp(Module* module) {
 	return cell;
 }
 
-void xilinx_simd_pack(Module* module, const std::vector<Cell*>& selected_cells)
+void xilinx_simd_pack(Module *module, const std::vector<Cell*> &selected_cells)
 {
 	std::deque<Cell*> simd12_add, simd12_sub;
 	std::deque<Cell*> simd24_add, simd24_sub;
@@ -113,158 +113,158 @@ void xilinx_simd_pack(Module* module, const std::vector<Cell*>& selected_cells)
 			log_abort();
 	}
 
-	auto f12 = [module](SigSpec& AB, SigSpec& C, SigSpec& P, SigSpec& CARRYOUT, Cell* lane) {
-		SigSpec A = lane->getPort(ID::A);
-		SigSpec B = lane->getPort(ID::B);
-		SigSpec Y = lane->getPort(ID::Y);
-		A.extend_u0(12, lane->getParam(ID::A_SIGNED).as_bool());
-		B.extend_u0(12, lane->getParam(ID::B_SIGNED).as_bool());
-		AB.append(A);
-		C.append(B);
-		if (GetSize(Y) < 13)
-			Y.append(module->addWire(NEW_ID, 13 - GetSize(Y)));
-		else
-			log_assert(GetSize(Y) == 13);
-		P.append(Y.extract(0, 12));
-		CARRYOUT.append(Y[12]);
+	auto f12 = [module](SigSpec &AB, SigSpec &C, SigSpec &P, SigSpec &CARRYOUT, Cell *lane) {
+	  SigSpec A = lane->getPort(ID::A);
+	  SigSpec B = lane->getPort(ID::B);
+	  SigSpec Y = lane->getPort(ID::Y);
+	  A.extend_u0(12, lane->getParam(ID::A_SIGNED).as_bool());
+	  B.extend_u0(12, lane->getParam(ID::B_SIGNED).as_bool());
+	  AB.append(A);
+	  C.append(B);
+	  if (GetSize(Y) < 13)
+		  Y.append(module->addWire(NEW_ID, 13-GetSize(Y)));
+	  else
+		  log_assert(GetSize(Y) == 13);
+	  P.append(Y.extract(0, 12));
+	  CARRYOUT.append(Y[12]);
 	};
-	auto g12 = [&f12, module](std::deque<Cell*>& simd12) {
-		while (simd12.size() > 1) {
-			SigSpec AB, C, P, CARRYOUT;
+	auto g12 = [&f12,module](std::deque<Cell*> &simd12) {
+	  while (simd12.size() > 1) {
+		  SigSpec AB, C, P, CARRYOUT;
 
-			Cell* lane1 = simd12.front();
-			simd12.pop_front();
-			Cell* lane2 = simd12.front();
-			simd12.pop_front();
-			Cell* lane3 = nullptr;
-			Cell* lane4 = nullptr;
+		  Cell *lane1 = simd12.front();
+		  simd12.pop_front();
+		  Cell *lane2 = simd12.front();
+		  simd12.pop_front();
+		  Cell *lane3 = nullptr;
+		  Cell *lane4 = nullptr;
 
-			if (!simd12.empty()) {
-				lane3 = simd12.front();
-				simd12.pop_front();
-				if (!simd12.empty()) {
-					lane4 = simd12.front();
-					simd12.pop_front();
-				}
-			}
+		  if (!simd12.empty()) {
+			  lane3 = simd12.front();
+			  simd12.pop_front();
+			  if (!simd12.empty()) {
+				  lane4 = simd12.front();
+				  simd12.pop_front();
+			  }
+		  }
 
-			log("Analysing %s.%s for Xilinx DSP SIMD12 packing.\n", log_id(module), log_id(lane1));
+		  log("Analysing %s.%s for Xilinx DSP SIMD12 packing.\n", log_id(module), log_id(lane1));
 
-			Cell* cell = addDsp(module);
-			cell->setParam(ID(USE_SIMD), Const("FOUR12"));
-			// X = A:B
-			// Y = 0
-			// Z = C
-			cell->setPort(ID(OPMODE), Const::from_string("0110101"));
+		  Cell *cell = addDsp(module);
+		  cell->setParam(ID(USE_SIMD), Const("FOUR12"));
+		  // X = A:B
+		  // Y = 0
+		  // Z = C
+		  cell->setPort(ID(OPMODE), Const::from_string("0110101"));
 
-			log_assert(lane1);
-			log_assert(lane2);
-			f12(AB, C, P, CARRYOUT, lane1);
-			f12(AB, C, P, CARRYOUT, lane2);
-			if (lane3) {
-				f12(AB, C, P, CARRYOUT, lane3);
-				if (lane4)
-					f12(AB, C, P, CARRYOUT, lane4);
-				else {
-					AB.append(Const(0, 12));
-					C.append(Const(0, 12));
-					P.append(module->addWire(NEW_ID, 12));
-					CARRYOUT.append(module->addWire(NEW_ID, 1));
-				}
-			}
-			else {
-				AB.append(Const(0, 24));
-				C.append(Const(0, 24));
-				P.append(module->addWire(NEW_ID, 24));
-				CARRYOUT.append(module->addWire(NEW_ID, 2));
-			}
-			log_assert(GetSize(AB) == 48);
-			log_assert(GetSize(C) == 48);
-			log_assert(GetSize(P) == 48);
-			log_assert(GetSize(CARRYOUT) == 4);
-			cell->setPort(ID::A, AB.extract(18, 30));
-			cell->setPort(ID::B, AB.extract(0, 18));
-			cell->setPort(ID::C, C);
-			cell->setPort(ID::P, P);
-			cell->setPort(ID(CARRYOUT), CARRYOUT);
-			if (lane1->type == ID($sub))
-				cell->setPort(ID(ALUMODE), Const::from_string("0011"));
+		  log_assert(lane1);
+		  log_assert(lane2);
+		  f12(AB, C, P, CARRYOUT, lane1);
+		  f12(AB, C, P, CARRYOUT, lane2);
+		  if (lane3) {
+			  f12(AB, C, P, CARRYOUT, lane3);
+			  if (lane4)
+				  f12(AB, C, P, CARRYOUT, lane4);
+			  else {
+				  AB.append(Const(0, 12));
+				  C.append(Const(0, 12));
+				  P.append(module->addWire(NEW_ID, 12));
+				  CARRYOUT.append(module->addWire(NEW_ID, 1));
+			  }
+		  }
+		  else {
+			  AB.append(Const(0, 24));
+			  C.append(Const(0, 24));
+			  P.append(module->addWire(NEW_ID, 24));
+			  CARRYOUT.append(module->addWire(NEW_ID, 2));
+		  }
+		  log_assert(GetSize(AB) == 48);
+		  log_assert(GetSize(C) == 48);
+		  log_assert(GetSize(P) == 48);
+		  log_assert(GetSize(CARRYOUT) == 4);
+		  cell->setPort(ID::A, AB.extract(18, 30));
+		  cell->setPort(ID::B, AB.extract(0, 18));
+		  cell->setPort(ID::C, C);
+		  cell->setPort(ID::P, P);
+		  cell->setPort(ID(CARRYOUT), CARRYOUT);
+		  if (lane1->type == ID($sub))
+			  cell->setPort(ID(ALUMODE), Const::from_string("0011"));
 
-			module->remove(lane1);
-			module->remove(lane2);
-			if (lane3) module->remove(lane3);
-			if (lane4) module->remove(lane4);
+		  module->remove(lane1);
+		  module->remove(lane2);
+		  if (lane3) module->remove(lane3);
+		  if (lane4) module->remove(lane4);
 
-			module->design->select(module, cell);
-		}
+		  module->design->select(module, cell);
+	  }
 	};
 	g12(simd12_add);
 	g12(simd12_sub);
 
-	auto f24 = [module](SigSpec& AB, SigSpec& C, SigSpec& P, SigSpec& CARRYOUT, Cell* lane) {
-		SigSpec A = lane->getPort(ID::A);
-		SigSpec B = lane->getPort(ID::B);
-		SigSpec Y = lane->getPort(ID::Y);
-		A.extend_u0(24, lane->getParam(ID::A_SIGNED).as_bool());
-		B.extend_u0(24, lane->getParam(ID::B_SIGNED).as_bool());
-		C.append(A);
-		AB.append(B);
-		if (GetSize(Y) < 25)
-			Y.append(module->addWire(NEW_ID, 25 - GetSize(Y)));
-		else
-			log_assert(GetSize(Y) == 25);
-		P.append(Y.extract(0, 24));
-		CARRYOUT.append(module->addWire(NEW_ID)); // TWO24 uses every other bit
-		CARRYOUT.append(Y[24]);
+	auto f24 = [module](SigSpec &AB, SigSpec &C, SigSpec &P, SigSpec &CARRYOUT, Cell *lane) {
+	  SigSpec A = lane->getPort(ID::A);
+	  SigSpec B = lane->getPort(ID::B);
+	  SigSpec Y = lane->getPort(ID::Y);
+	  A.extend_u0(24, lane->getParam(ID::A_SIGNED).as_bool());
+	  B.extend_u0(24, lane->getParam(ID::B_SIGNED).as_bool());
+	  C.append(A);
+	  AB.append(B);
+	  if (GetSize(Y) < 25)
+		  Y.append(module->addWire(NEW_ID, 25-GetSize(Y)));
+	  else
+		  log_assert(GetSize(Y) == 25);
+	  P.append(Y.extract(0, 24));
+	  CARRYOUT.append(module->addWire(NEW_ID)); // TWO24 uses every other bit
+	  CARRYOUT.append(Y[24]);
 	};
-	auto g24 = [&f24, module](std::deque<Cell*>& simd24) {
-		while (simd24.size() > 1) {
-			SigSpec AB;
-			SigSpec C;
-			SigSpec P;
-			SigSpec CARRYOUT;
+	auto g24 = [&f24,module](std::deque<Cell*> &simd24) {
+	  while (simd24.size() > 1) {
+		  SigSpec AB;
+		  SigSpec C;
+		  SigSpec P;
+		  SigSpec CARRYOUT;
 
-			Cell* lane1 = simd24.front();
-			simd24.pop_front();
-			Cell* lane2 = simd24.front();
-			simd24.pop_front();
+		  Cell *lane1 = simd24.front();
+		  simd24.pop_front();
+		  Cell *lane2 = simd24.front();
+		  simd24.pop_front();
 
-			log("Analysing %s.%s for Xilinx DSP SIMD24 packing.\n", log_id(module), log_id(lane1));
+		  log("Analysing %s.%s for Xilinx DSP SIMD24 packing.\n", log_id(module), log_id(lane1));
 
-			Cell* cell = addDsp(module);
-			cell->setParam(ID(USE_SIMD), Const("TWO24"));
-			// X = A:B
-			// Y = 0
-			// Z = C
-			cell->setPort(ID(OPMODE), Const::from_string("0110011"));
+		  Cell *cell = addDsp(module);
+		  cell->setParam(ID(USE_SIMD), Const("TWO24"));
+		  // X = A:B
+		  // Y = 0
+		  // Z = C
+		  cell->setPort(ID(OPMODE), Const::from_string("0110011"));
 
-			log_assert(lane1);
-			log_assert(lane2);
-			f24(AB, C, P, CARRYOUT, lane1);
-			f24(AB, C, P, CARRYOUT, lane2);
-			log_assert(GetSize(AB) == 48);
-			log_assert(GetSize(C) == 48);
-			log_assert(GetSize(P) == 48);
-			log_assert(GetSize(CARRYOUT) == 4);
-			cell->setPort(ID::A, AB.extract(18, 30));
-			cell->setPort(ID::B, AB.extract(0, 18));
-			cell->setPort(ID::C, C);
-			cell->setPort(ID::P, P);
-			cell->setPort(ID(CARRYOUT), CARRYOUT);
-			if (lane1->type == ID($sub))
-				cell->setPort(ID(ALUMODE), Const::from_string("0011"));
+		  log_assert(lane1);
+		  log_assert(lane2);
+		  f24(AB, C, P, CARRYOUT, lane1);
+		  f24(AB, C, P, CARRYOUT, lane2);
+		  log_assert(GetSize(AB) == 48);
+		  log_assert(GetSize(C) == 48);
+		  log_assert(GetSize(P) == 48);
+		  log_assert(GetSize(CARRYOUT) == 4);
+		  cell->setPort(ID::A, AB.extract(18, 30));
+		  cell->setPort(ID::B, AB.extract(0, 18));
+		  cell->setPort(ID::C, C);
+		  cell->setPort(ID::P, P);
+		  cell->setPort(ID(CARRYOUT), CARRYOUT);
+		  if (lane1->type == ID($sub))
+			  cell->setPort(ID(ALUMODE), Const::from_string("0011"));
 
-			module->remove(lane1);
-			module->remove(lane2);
+		  module->remove(lane1);
+		  module->remove(lane2);
 
-			module->design->select(module, cell);
-		}
+		  module->design->select(module, cell);
+	  }
 	};
 	g24(simd24_add);
 	g24(simd24_sub);
 }
 
-void pirdsp_simd_pack(Module* module, const std::vector<Cell*>& selected_cells)
+void pirdsp_simd_pack(Module *module, const std::vector<Cell*> &selected_cells)
 {
 	std::deque<Cell*> simd6_add, simd6_sub;
 	std::deque<Cell*> simd12_add, simd12_sub;
@@ -316,284 +316,283 @@ void pirdsp_simd_pack(Module* module, const std::vector<Cell*>& selected_cells)
 			log_abort();
 	}
 
-	auto f6 = [module](SigSpec& AB, SigSpec& C, SigSpec& P, SigSpec& CARRYOUT, Cell* lane) {
-		SigSpec A = lane->getPort(ID::A);
-		SigSpec B = lane->getPort(ID::B);
-		SigSpec Y = lane->getPort(ID::Y);
-		A.extend_u0(6, lane->getParam(ID::A_SIGNED).as_bool());
-		B.extend_u0(6, lane->getParam(ID::B_SIGNED).as_bool());
-		AB.append(A);
-		C.append(B);
-		if (GetSize(Y) < 7)
-			Y.append(module->addWire(NEW_ID, 7 - GetSize(Y)));
-		else
-			log_assert(GetSize(Y) == 7);
-		P.append(Y.extract(0, 6));
-		CARRYOUT.append(Y[6]);
+	auto f6 = [module](SigSpec &AB, SigSpec &C, SigSpec &P, SigSpec &CARRYOUT, Cell *lane) {
+	  SigSpec A = lane->getPort(ID::A);
+	  SigSpec B = lane->getPort(ID::B);
+	  SigSpec Y = lane->getPort(ID::Y);
+	  A.extend_u0(6, lane->getParam(ID::A_SIGNED).as_bool());
+	  B.extend_u0(6, lane->getParam(ID::B_SIGNED).as_bool());
+	  AB.append(A);
+	  C.append(B);
+	  if (GetSize(Y) < 7)
+		  Y.append(module->addWire(NEW_ID, 7-GetSize(Y)));
+	  else
+		  log_assert(GetSize(Y) == 7);
+	  P.append(Y.extract(0, 6));
+	  CARRYOUT.append(Y[6]);
 	};
-	auto g6 = [&f6, module](std::deque<Cell*>& simd6) {
-		while (simd6.size() > 1) {
-			SigSpec AB, C, P, CARRYOUT;
+	auto g6 = [&f6,module](std::deque<Cell*> &simd6) {
+	  while (simd6.size() > 1) {
+		  SigSpec AB, C, P, CARRYOUT;
 
-			Cell* lane1 = simd6.front();
-			simd6.pop_front();
-			Cell* lane2 = simd6.front();
-			simd6.pop_front();
-			Cell* lane3 = simd6.front();
-			simd6.pop_front();
-			Cell* lane4 = simd6.front();
-			simd6.pop_front();
-			Cell* lane5 = nullptr;
-			Cell* lane6 = nullptr;
-			Cell* lane7 = nullptr;
-			Cell* lane8 = nullptr;
+		  Cell *lane1 = simd6.front();
+		  simd6.pop_front();
+		  Cell *lane2 = simd6.front();
+		  simd6.pop_front();
+		  Cell *lane3 = simd6.front();
+		  simd6.pop_front();
+		  Cell *lane4 = simd6.front();
+		  simd6.pop_front();
+		  Cell *lane5 = nullptr;
+		  Cell *lane6 = nullptr;
+		  Cell *lane7 = nullptr;
+		  Cell *lane8 = nullptr;
 
-			if (!simd6.empty()) {
-				lane5 = simd6.front();
-				simd6.pop_front();
-				if (!simd6.empty()) {
-					lane6 = simd6.front();
-					simd6.pop_front();
-					if (!simd6.empty()) {
-						lane7 = simd6.front();
-						simd6.pop_front();
-						if (!simd6.empty()) {
-							lane8 = simd6.front();
-							simd6.pop_front();
-						}
-					}
-				}
-			}
+		  if (!simd6.empty()) {
+			  lane5 = simd6.front();
+			  simd6.pop_front();
+			  if (!simd6.empty()) {
+				  lane6 = simd6.front();
+				  simd6.pop_front();
+				  if (!simd6.empty()) {
+					  lane7 = simd6.front();
+					  simd6.pop_front();
+					  if (!simd6.empty()) {
+						  lane8 = simd6.front();
+						  simd6.pop_front();
+					  }
+				  }
+			  }
+		  }
 
-			log("Analysing %s.%s for Xilinx DSP SIMD6 packing.\n", log_id(module), log_id(lane1));
+		  log("Analysing %s.%s for Xilinx DSP SIMD6 packing.\n", log_id(module), log_id(lane1));
 
-			Cell* cell = addDsp(module);
-			cell->setParam(ID(USE_SIMD), Const("2X2"));
+		  Cell *cell = addDsp(module);
+		  cell->setParam(ID(USE_SIMD), Const("2X2"));
 
-			// Z = C
-			cell->setPort(ID(OPMODE), Const::from_string("000110101"));
+		  // Z = C
+		  cell->setPort(ID(OPMODE), Const::from_string("000110101"));
 
-			log_assert(lane1);
-			log_assert(lane2);
-			f6(AB, C, P, CARRYOUT, lane1);
-			f6(AB, C, P, CARRYOUT, lane2);
-			f6(AB, C, P, CARRYOUT, lane3);
-			f6(AB, C, P, CARRYOUT, lane4);
+		  log_assert(lane1);
+		  log_assert(lane2);
+		  f6(AB, C, P, CARRYOUT, lane1);
+		  f6(AB, C, P, CARRYOUT, lane2);
+		  f6(AB, C, P, CARRYOUT, lane3);
+		  f6(AB, C, P, CARRYOUT, lane4);
 
-			if (lane5) {
-				f6(AB, C, P, CARRYOUT, lane5);
-				if (lane6) {
-					f6(AB, C, P, CARRYOUT, lane6);
-					if (lane7) {
-						f6(AB, C, P, CARRYOUT, lane7);
-						if (lane8)
-							f6(AB, C, P, CARRYOUT, lane8);
-						else {
-							AB.append(Const(0, 6));
-							C.append(Const(0, 6));
-							P.append(module->addWire(NEW_ID, 6));
-							CARRYOUT.append(module->addWire(NEW_ID, 1));
-						}
-					}
-					else {
-						AB.append(Const(0, 12));
-						C.append(Const(0, 12));
-						P.append(module->addWire(NEW_ID, 12));
-						CARRYOUT.append(module->addWire(NEW_ID, 2));
-					}
-				}
-				else {
-					AB.append(Const(0, 18));
-					C.append(Const(0, 18));
-					P.append(module->addWire(NEW_ID, 18));
-					CARRYOUT.append(module->addWire(NEW_ID, 3));
-				}
-			}
-			else {
-				AB.append(Const(0, 24));
-				C.append(Const(0, 24));
-				P.append(module->addWire(NEW_ID, 24));
-				CARRYOUT.append(module->addWire(NEW_ID, 4));
-			}
+		  if (lane5) {
+			  f6(AB, C, P, CARRYOUT, lane5);
+			  if (lane6) {
+				  f6(AB, C, P, CARRYOUT, lane6);
+				  if (lane7) {
+					  f6(AB, C, P, CARRYOUT, lane7);
+					  if (lane8)
+						  f6(AB, C, P, CARRYOUT, lane8);
+					  else {
+						  AB.append(Const(0, 6));
+						  C.append(Const(0, 6));
+						  P.append(module->addWire(NEW_ID, 6));
+						  CARRYOUT.append(module->addWire(NEW_ID, 1));
+					  }
+				  } else {
+					  AB.append(Const(0, 12));
+					  C.append(Const(0, 12));
+					  P.append(module->addWire(NEW_ID, 12));
+					  CARRYOUT.append(module->addWire(NEW_ID, 2));
+				  }
+			  }
+			  else {
+				  AB.append(Const(0, 18));
+				  C.append(Const(0, 18));
+				  P.append(module->addWire(NEW_ID, 18));
+				  CARRYOUT.append(module->addWire(NEW_ID, 3));
+			  }
+		  }
+		  else {
+			  AB.append(Const(0, 24));
+			  C.append(Const(0, 24));
+			  P.append(module->addWire(NEW_ID, 24));
+			  CARRYOUT.append(module->addWire(NEW_ID, 4));
+		  }
 
-			log_assert(GetSize(AB) == 48);
-			log_assert(GetSize(C) == 48);
-			log_assert(GetSize(P) == 48);
-			log_assert(GetSize(CARRYOUT) == 8);
-			cell->setPort(ID::A, AB.extract(18, 30));
-			cell->setPort(ID::B, AB.extract(0, 18));
-			cell->setPort(ID::C, C);
-			cell->setPort(ID::P, P);
-			cell->setPort(ID(CARRYOUT), CARRYOUT);
-			if (lane1->type == ID($sub))
-				cell->setPort(ID(ALUMODE), Const::from_string("0011"));
+		  log_assert(GetSize(AB) == 48);
+		  log_assert(GetSize(C) == 48);
+		  log_assert(GetSize(P) == 48);
+		  log_assert(GetSize(CARRYOUT) == 8);
+		  cell->setPort(ID::A, AB.extract(18, 30));
+		  cell->setPort(ID::B, AB.extract(0, 18));
+		  cell->setPort(ID::C, C);
+		  cell->setPort(ID::P, P);
+		  cell->setPort(ID(CARRYOUT), CARRYOUT);
+		  if (lane1->type == ID($sub))
+			  cell->setPort(ID(ALUMODE), Const::from_string("0011"));
 
-			module->remove(lane1);
-			module->remove(lane2);
-			module->remove(lane3);
-			module->remove(lane4);
-			if (lane5) module->remove(lane5);
-			if (lane6) module->remove(lane6);
-			if (lane7) module->remove(lane7);
-			if (lane8) module->remove(lane8);
+		  module->remove(lane1);
+		  module->remove(lane2);
+		  module->remove(lane3);
+		  module->remove(lane4);
+		  if (lane5) module->remove(lane5);
+		  if (lane6) module->remove(lane6);
+		  if (lane7) module->remove(lane7);
+		  if (lane8) module->remove(lane8);
 
-			module->design->select(module, cell);
-		}
+		  module->design->select(module, cell);
+	  }
 	};
 	g6(simd6_add);
 	g6(simd6_sub);
 
-	auto f12 = [module](SigSpec& AB, SigSpec& C, SigSpec& P, SigSpec& CARRYOUT, Cell* lane) {
-		SigSpec A = lane->getPort(ID::A);
-		SigSpec B = lane->getPort(ID::B);
-		SigSpec Y = lane->getPort(ID::Y);
-		A.extend_u0(12, lane->getParam(ID::A_SIGNED).as_bool());
-		B.extend_u0(12, lane->getParam(ID::B_SIGNED).as_bool());
-		AB.append(A);
-		C.append(B);
-		if (GetSize(Y) < 13)
-			Y.append(module->addWire(NEW_ID, 13 - GetSize(Y)));
-		else
-			log_assert(GetSize(Y) == 13);
-		P.append(Y.extract(0, 12));
-		CARRYOUT.append(module->addWire(NEW_ID));
-		CARRYOUT.append(Y[12]);
+	auto f12 = [module](SigSpec &AB, SigSpec &C, SigSpec &P, SigSpec &CARRYOUT, Cell *lane) {
+	  SigSpec A = lane->getPort(ID::A);
+	  SigSpec B = lane->getPort(ID::B);
+	  SigSpec Y = lane->getPort(ID::Y);
+	  A.extend_u0(12, lane->getParam(ID::A_SIGNED).as_bool());
+	  B.extend_u0(12, lane->getParam(ID::B_SIGNED).as_bool());
+	  AB.append(A);
+	  C.append(B);
+	  if (GetSize(Y) < 13)
+		  Y.append(module->addWire(NEW_ID, 13-GetSize(Y)));
+	  else
+		  log_assert(GetSize(Y) == 13);
+	  P.append(Y.extract(0, 12));
+	  CARRYOUT.append(module->addWire(NEW_ID));
+	  CARRYOUT.append(Y[12]);
 	};
-	auto g12 = [&f12, module](std::deque<Cell*>& simd12) {
-		while (simd12.size() > 1) {
-			SigSpec AB, C, P, CARRYOUT;
+	auto g12 = [&f12,module](std::deque<Cell*> &simd12) {
+	  while (simd12.size() > 1) {
+		  SigSpec AB, C, P, CARRYOUT;
 
-			Cell* lane1 = simd12.front();
-			simd12.pop_front();
-			Cell* lane2 = simd12.front();
-			simd12.pop_front();
-			Cell* lane3 = nullptr;
-			Cell* lane4 = nullptr;
+		  Cell *lane1 = simd12.front();
+		  simd12.pop_front();
+		  Cell *lane2 = simd12.front();
+		  simd12.pop_front();
+		  Cell *lane3 = nullptr;
+		  Cell *lane4 = nullptr;
 
-			if (!simd12.empty()) {
-				lane3 = simd12.front();
-				simd12.pop_front();
-				if (!simd12.empty()) {
-					lane4 = simd12.front();
-					simd12.pop_front();
-				}
-			}
+		  if (!simd12.empty()) {
+			  lane3 = simd12.front();
+			  simd12.pop_front();
+			  if (!simd12.empty()) {
+				  lane4 = simd12.front();
+				  simd12.pop_front();
+			  }
+		  }
 
-			log("Analysing %s.%s for Xilinx DSP SIMD12 packing.\n", log_id(module), log_id(lane1));
+		  log("Analysing %s.%s for Xilinx DSP SIMD12 packing.\n", log_id(module), log_id(lane1));
 
-			Cell* cell = addDsp(module);
-			cell->setParam(ID(USE_SIMD), Const("4X4"));
-			// Z = C
-			cell->setPort(ID(OPMODE), Const::from_string("000110101"));
+		  Cell *cell = addDsp(module);
+		  cell->setParam(ID(USE_SIMD), Const("4X4"));
+		  // Z = C
+		  cell->setPort(ID(OPMODE), Const::from_string("000110101"));
 
-			log_assert(lane1);
-			log_assert(lane2);
-			f12(AB, C, P, CARRYOUT, lane1);
-			f12(AB, C, P, CARRYOUT, lane2);
-			if (lane3) {
-				f12(AB, C, P, CARRYOUT, lane3);
-				if (lane4)
-					f12(AB, C, P, CARRYOUT, lane4);
-				else {
-					AB.append(Const(0, 12));
-					C.append(Const(0, 12));
-					P.append(module->addWire(NEW_ID, 12));
-					CARRYOUT.append(module->addWire(NEW_ID, 1));
-				}
-			}
-			else {
-				AB.append(Const(0, 24));
-				C.append(Const(0, 24));
-				P.append(module->addWire(NEW_ID, 24));
-				CARRYOUT.append(module->addWire(NEW_ID, 2));
-			}
-			log_assert(GetSize(AB) == 48);
-			log_assert(GetSize(C) == 48);
-			log_assert(GetSize(P) == 48);
-			log_assert(GetSize(CARRYOUT) == 8);
-			cell->setPort(ID::A, AB.extract(18, 30));
-			cell->setPort(ID::B, AB.extract(0, 18));
-			cell->setPort(ID::C, C);
-			cell->setPort(ID::P, P);
-			cell->setPort(ID(CARRYOUT), CARRYOUT);
-			if (lane1->type == ID($sub))
-				cell->setPort(ID(ALUMODE), Const::from_string("0011"));
+		  log_assert(lane1);
+		  log_assert(lane2);
+		  f12(AB, C, P, CARRYOUT, lane1);
+		  f12(AB, C, P, CARRYOUT, lane2);
+		  if (lane3) {
+			  f12(AB, C, P, CARRYOUT, lane3);
+			  if (lane4)
+				  f12(AB, C, P, CARRYOUT, lane4);
+			  else {
+				  AB.append(Const(0, 12));
+				  C.append(Const(0, 12));
+				  P.append(module->addWire(NEW_ID, 12));
+				  CARRYOUT.append(module->addWire(NEW_ID, 1));
+			  }
+		  }
+		  else {
+			  AB.append(Const(0, 24));
+			  C.append(Const(0, 24));
+			  P.append(module->addWire(NEW_ID, 24));
+			  CARRYOUT.append(module->addWire(NEW_ID, 2));
+		  }
+		  log_assert(GetSize(AB) == 48);
+		  log_assert(GetSize(C) == 48);
+		  log_assert(GetSize(P) == 48);
+		  log_assert(GetSize(CARRYOUT) == 8);
+		  cell->setPort(ID::A, AB.extract(18, 30));
+		  cell->setPort(ID::B, AB.extract(0, 18));
+		  cell->setPort(ID::C, C);
+		  cell->setPort(ID::P, P);
+		  cell->setPort(ID(CARRYOUT), CARRYOUT);
+		  if (lane1->type == ID($sub))
+			  cell->setPort(ID(ALUMODE), Const::from_string("0011"));
 
-			module->remove(lane1);
-			module->remove(lane2);
-			if (lane3) module->remove(lane3);
-			if (lane4) module->remove(lane4);
+		  module->remove(lane1);
+		  module->remove(lane2);
+		  if (lane3) module->remove(lane3);
+		  if (lane4) module->remove(lane4);
 
-			module->design->select(module, cell);
-		}
+		  module->design->select(module, cell);
+	  }
 	};
 	g12(simd12_add);
 	g12(simd12_sub);
 
-	auto f24 = [module](SigSpec& AB, SigSpec& C, SigSpec& P, SigSpec& CARRYOUT, Cell* lane) {
-		SigSpec A = lane->getPort(ID::A);
-		SigSpec B = lane->getPort(ID::B);
-		SigSpec Y = lane->getPort(ID::Y);
-		A.extend_u0(24, lane->getParam(ID::A_SIGNED).as_bool());
-		B.extend_u0(24, lane->getParam(ID::B_SIGNED).as_bool());
-		C.append(A);
-		AB.append(B);
-		if (GetSize(Y) < 25)
-			Y.append(module->addWire(NEW_ID, 25 - GetSize(Y)));
-		else
-			log_assert(GetSize(Y) == 25);
-		P.append(Y.extract(0, 24));
-		CARRYOUT.append(module->addWire(NEW_ID)); // TWO24 uses every other bit
-		CARRYOUT.append(Y[24]);
+	auto f24 = [module](SigSpec &AB, SigSpec &C, SigSpec &P, SigSpec &CARRYOUT, Cell *lane) {
+	  SigSpec A = lane->getPort(ID::A);
+	  SigSpec B = lane->getPort(ID::B);
+	  SigSpec Y = lane->getPort(ID::Y);
+	  A.extend_u0(24, lane->getParam(ID::A_SIGNED).as_bool());
+	  B.extend_u0(24, lane->getParam(ID::B_SIGNED).as_bool());
+	  C.append(A);
+	  AB.append(B);
+	  if (GetSize(Y) < 25)
+		  Y.append(module->addWire(NEW_ID, 25-GetSize(Y)));
+	  else
+		  log_assert(GetSize(Y) == 25);
+	  P.append(Y.extract(0, 24));
+	  CARRYOUT.append(module->addWire(NEW_ID)); // TWO24 uses every other bit
+	  CARRYOUT.append(Y[24]);
 	};
-	auto g24 = [&f24, module](std::deque<Cell*>& simd24) {
-		while (simd24.size() > 1) {
-			SigSpec AB;
-			SigSpec C;
-			SigSpec P;
-			SigSpec CARRYOUT;
+	auto g24 = [&f24,module](std::deque<Cell*> &simd24) {
+	  while (simd24.size() > 1) {
+		  SigSpec AB;
+		  SigSpec C;
+		  SigSpec P;
+		  SigSpec CARRYOUT;
 
-			Cell* lane1 = simd24.front();
-			simd24.pop_front();
-			Cell* lane2 = simd24.front();
-			simd24.pop_front();
+		  Cell *lane1 = simd24.front();
+		  simd24.pop_front();
+		  Cell *lane2 = simd24.front();
+		  simd24.pop_front();
 
-			log("Analysing %s.%s for Xilinx DSP SIMD24 packing.\n", log_id(module), log_id(lane1));
+		  log("Analysing %s.%s for Xilinx DSP SIMD24 packing.\n", log_id(module), log_id(lane1));
 
-			Cell* cell = addDsp(module);
-			cell->setParam(ID(USE_SIMD), Const("9X9"));
-			// Z = C
-			cell->setPort(ID(OPMODE), Const::from_string("000110101"));
+		  Cell *cell = addDsp(module);
+		  cell->setParam(ID(USE_SIMD), Const("9X9"));
+		  // Z = C
+		  cell->setPort(ID(OPMODE), Const::from_string("000110101"));
 
-			log_assert(lane1);
-			log_assert(lane2);
-			f24(AB, C, P, CARRYOUT, lane1);
-			f24(AB, C, P, CARRYOUT, lane2);
-			log_assert(GetSize(AB) == 48);
-			log_assert(GetSize(C) == 48);
-			log_assert(GetSize(P) == 48);
-			log_assert(GetSize(CARRYOUT) == 8);
-			cell->setPort(ID::A, AB.extract(18, 30));
-			cell->setPort(ID::B, AB.extract(0, 18));
-			cell->setPort(ID::C, C);
-			cell->setPort(ID::P, P);
-			cell->setPort(ID(CARRYOUT), CARRYOUT);
-			if (lane1->type == ID($sub))
-				cell->setPort(ID(ALUMODE), Const::from_string("0011"));
+		  log_assert(lane1);
+		  log_assert(lane2);
+		  f24(AB, C, P, CARRYOUT, lane1);
+		  f24(AB, C, P, CARRYOUT, lane2);
+		  log_assert(GetSize(AB) == 48);
+		  log_assert(GetSize(C) == 48);
+		  log_assert(GetSize(P) == 48);
+		  log_assert(GetSize(CARRYOUT) == 8);
+		  cell->setPort(ID::A, AB.extract(18, 30));
+		  cell->setPort(ID::B, AB.extract(0, 18));
+		  cell->setPort(ID::C, C);
+		  cell->setPort(ID::P, P);
+		  cell->setPort(ID(CARRYOUT), CARRYOUT);
+		  if (lane1->type == ID($sub))
+			  cell->setPort(ID(ALUMODE), Const::from_string("0011"));
 
-			module->remove(lane1);
-			module->remove(lane2);
+		  module->remove(lane1);
+		  module->remove(lane2);
 
-			module->design->select(module, cell);
-		}
+		  module->design->select(module, cell);
+	  }
 	};
 	g24(simd24_add);
 	g24(simd24_sub);
 }
 
-void xilinx_dsp_pack(xilinx_dsp_pm& pm)
+void xilinx_dsp_pack(xilinx_dsp_pm &pm)
 {
-	auto& st = pm.st_xilinx_dsp_pack;
+	auto &st = pm.st_xilinx_dsp_pack;
 
 	log("Analysing %s.%s for Xilinx DSP packing.\n", log_id(pm.module), log_id(st.dsp));
 
@@ -611,7 +610,7 @@ void xilinx_dsp_pack(xilinx_dsp_pm& pm)
 	log_debug("ffP:        %s\n", log_id(st.ffP, "--"));
 	log_debug("overflow:   %s\n", log_id(st.overflow, "--"));
 
-	Cell* cell = st.dsp;
+	Cell *cell = st.dsp;
 
 	if (st.preAdd) {
 		log("  preadder %s (%s)\n", log_id(st.preAdd), log_id(st.preAdd->type));
@@ -643,7 +642,7 @@ void xilinx_dsp_pack(xilinx_dsp_pm& pm)
 	if (st.postAdd) {
 		log("  postadder %s (%s)\n", log_id(st.postAdd), log_id(st.postAdd->type));
 
-		SigSpec& opmode = cell->connections_.at(ID(OPMODE));
+		SigSpec &opmode = cell->connections_.at(ID(OPMODE));
 		if (st.postAddMux) {
 			log_assert(st.ffP);
 			opmode[4] = st.postAddMux->getPort(ID::S);
@@ -678,7 +677,7 @@ void xilinx_dsp_pack(xilinx_dsp_pm& pm)
 			// Since B is an exact power of 2, subtract 1
 			//   by inverting all bits up until hitting
 			//   that one hi bit
-			for (auto& b : B.bits)
+			for (auto &b : B.bits)
 				if (b == State::S0) b = State::S1;
 				else if (b == State::S1) {
 					b = State::S0;
@@ -699,38 +698,37 @@ void xilinx_dsp_pack(xilinx_dsp_pm& pm)
 	{
 		cell->setPort(ID::CLK, st.clock);
 
-		auto f = [&pm, cell](SigSpec& A, Cell* ff, IdString ceport, IdString rstport) {
-			SigSpec D = ff->getPort(ID::D);
-			SigSpec Q = pm.sigmap(ff->getPort(ID::Q));
-			if (!A.empty())
-				A.replace(Q, D);
-			if (rstport != IdString()) {
-				if (ff->type.in(ID($sdff), ID($sdffe))) {
-					SigSpec srst = ff->getPort(ID::SRST);
-					bool rstpol = ff->getParam(ID::SRST_POLARITY).as_bool();
-					cell->setPort(rstport, rstpol ? srst : pm.module->Not(NEW_ID, srst));
-				}
-				else {
-					cell->setPort(rstport, State::S0);
-				}
-			}
-			if (ff->type.in(ID($dffe), ID($sdffe))) {
-				SigSpec ce = ff->getPort(ID::EN);
-				bool cepol = ff->getParam(ID::EN_POLARITY).as_bool();
-				cell->setPort(ceport, cepol ? ce : pm.module->Not(NEW_ID, ce));
-			}
-			else
-				cell->setPort(ceport, State::S1);
+		auto f = [&pm,cell](SigSpec &A, Cell* ff, IdString ceport, IdString rstport) {
+		  SigSpec D = ff->getPort(ID::D);
+		  SigSpec Q = pm.sigmap(ff->getPort(ID::Q));
+		  if (!A.empty())
+			  A.replace(Q, D);
+		  if (rstport != IdString()) {
+			  if (ff->type.in(ID($sdff), ID($sdffe))) {
+				  SigSpec srst = ff->getPort(ID::SRST);
+				  bool rstpol = ff->getParam(ID::SRST_POLARITY).as_bool();
+				  cell->setPort(rstport, rstpol ? srst : pm.module->Not(NEW_ID, srst));
+			  } else {
+				  cell->setPort(rstport, State::S0);
+			  }
+		  }
+		  if (ff->type.in(ID($dffe), ID($sdffe))) {
+			  SigSpec ce = ff->getPort(ID::EN);
+			  bool cepol = ff->getParam(ID::EN_POLARITY).as_bool();
+			  cell->setPort(ceport, cepol ? ce : pm.module->Not(NEW_ID, ce));
+		  }
+		  else
+			  cell->setPort(ceport, State::S1);
 
-			for (auto c : Q.chunks()) {
-				auto it = c.wire->attributes.find(ID::init);
-				if (it == c.wire->attributes.end())
-					continue;
-				for (int i = c.offset; i < c.offset + c.width; i++) {
-					log_assert(it->second[i] == State::S0 || it->second[i] == State::Sx);
-					it->second[i] = State::Sx;
-				}
-			}
+		  for (auto c : Q.chunks()) {
+			  auto it = c.wire->attributes.find(ID::init);
+			  if (it == c.wire->attributes.end())
+				  continue;
+			  for (int i = c.offset; i < c.offset+c.width; i++) {
+				  log_assert(it->second[i] == State::S0 || it->second[i] == State::Sx);
+				  it->second[i] = State::Sx;
+			  }
+		  }
 		};
 
 		if (st.ffA2) {
@@ -813,15 +811,15 @@ void xilinx_dsp_pack(xilinx_dsp_pm& pm)
 
 	SigSpec P = st.sigP;
 	if (GetSize(P) < 48)
-		P.append(pm.module->addWire(NEW_ID, 48 - GetSize(P)));
+		P.append(pm.module->addWire(NEW_ID, 48-GetSize(P)));
 	cell->setPort(ID::P, P);
 
 	pm.blacklist(cell);
 }
 
-void xilinx_dsp48e2_pack(xilinx_dsp48e2_pm& pm)
+void xilinx_dsp48e2_pack(xilinx_dsp48e2_pm &pm)
 {
-	auto& st = pm.st_xilinx_dsp48e2_pack;
+	auto &st = pm.st_xilinx_dsp48e2_pack;
 
 	log("Analysing %s.%s for Xilinx DSP48E2 packing.\n", log_id(pm.module), log_id(st.dsp));
 
@@ -839,7 +837,7 @@ void xilinx_dsp48e2_pack(xilinx_dsp48e2_pm& pm)
 	log_debug("ffP:        %s\n", log_id(st.ffP, "--"));
 	log_debug("overflow:   %s\n", log_id(st.overflow, "--"));
 
-	Cell* cell = st.dsp;
+	Cell *cell = st.dsp;
 
 	if (st.preAdd) {
 		log("  preadder %s (%s)\n", log_id(st.preAdd), log_id(st.preAdd->type));
@@ -874,7 +872,7 @@ void xilinx_dsp48e2_pack(xilinx_dsp48e2_pm& pm)
 	if (st.postAdd) {
 		log("  postadder %s (%s)\n", log_id(st.postAdd), log_id(st.postAdd->type));
 
-		SigSpec& opmode = cell->connections_.at(ID(OPMODE));
+		SigSpec &opmode = cell->connections_.at(ID(OPMODE));
 		if (st.postAddMux) {
 			log_assert(st.ffP);
 			opmode[4] = st.postAddMux->getPort(ID::S);
@@ -910,7 +908,7 @@ void xilinx_dsp48e2_pack(xilinx_dsp48e2_pm& pm)
 			// Since B is an exact power of 2, subtract 1
 			//   by inverting all bits up until hitting
 			//   that one hi bit
-			for (auto& b : B.bits)
+			for (auto &b : B.bits)
 				if (b == State::S0) b = State::S1;
 				else if (b == State::S1) {
 					b = State::S0;
@@ -931,38 +929,37 @@ void xilinx_dsp48e2_pack(xilinx_dsp48e2_pm& pm)
 	{
 		cell->setPort(ID::CLK, st.clock);
 
-		auto f = [&pm, cell](SigSpec& A, Cell* ff, IdString ceport, IdString rstport) {
-			SigSpec D = ff->getPort(ID::D);
-			SigSpec Q = pm.sigmap(ff->getPort(ID::Q));
-			if (!A.empty())
-				A.replace(Q, D);
-			if (rstport != IdString()) {
-				if (ff->type.in(ID($sdff), ID($sdffe))) {
-					SigSpec srst = ff->getPort(ID::SRST);
-					bool rstpol = ff->getParam(ID::SRST_POLARITY).as_bool();
-					cell->setPort(rstport, rstpol ? srst : pm.module->Not(NEW_ID, srst));
-				}
-				else {
-					cell->setPort(rstport, State::S0);
-				}
-			}
-			if (ff->type.in(ID($dffe), ID($sdffe))) {
-				SigSpec ce = ff->getPort(ID::EN);
-				bool cepol = ff->getParam(ID::EN_POLARITY).as_bool();
-				cell->setPort(ceport, cepol ? ce : pm.module->Not(NEW_ID, ce));
-			}
-			else
-				cell->setPort(ceport, State::S1);
+		auto f = [&pm,cell](SigSpec &A, Cell* ff, IdString ceport, IdString rstport) {
+		  SigSpec D = ff->getPort(ID::D);
+		  SigSpec Q = pm.sigmap(ff->getPort(ID::Q));
+		  if (!A.empty())
+			  A.replace(Q, D);
+		  if (rstport != IdString()) {
+			  if (ff->type.in(ID($sdff), ID($sdffe))) {
+				  SigSpec srst = ff->getPort(ID::SRST);
+				  bool rstpol = ff->getParam(ID::SRST_POLARITY).as_bool();
+				  cell->setPort(rstport, rstpol ? srst : pm.module->Not(NEW_ID, srst));
+			  } else {
+				  cell->setPort(rstport, State::S0);
+			  }
+		  }
+		  if (ff->type.in(ID($dffe), ID($sdffe))) {
+			  SigSpec ce = ff->getPort(ID::EN);
+			  bool cepol = ff->getParam(ID::EN_POLARITY).as_bool();
+			  cell->setPort(ceport, cepol ? ce : pm.module->Not(NEW_ID, ce));
+		  }
+		  else
+			  cell->setPort(ceport, State::S1);
 
-			for (auto c : Q.chunks()) {
-				auto it = c.wire->attributes.find(ID::init);
-				if (it == c.wire->attributes.end())
-					continue;
-				for (int i = c.offset; i < c.offset + c.width; i++) {
-					log_assert(it->second[i] == State::S0 || it->second[i] == State::Sx);
-					it->second[i] = State::Sx;
-				}
-			}
+		  for (auto c : Q.chunks()) {
+			  auto it = c.wire->attributes.find(ID::init);
+			  if (it == c.wire->attributes.end())
+				  continue;
+			  for (int i = c.offset; i < c.offset+c.width; i++) {
+				  log_assert(it->second[i] == State::S0 || it->second[i] == State::Sx);
+				  it->second[i] = State::Sx;
+			  }
+		  }
 		};
 
 		if (st.ffA2) {
@@ -1045,15 +1042,15 @@ void xilinx_dsp48e2_pack(xilinx_dsp48e2_pm& pm)
 
 	SigSpec P = st.sigP;
 	if (GetSize(P) < 48)
-		P.append(pm.module->addWire(NEW_ID, 48 - GetSize(P)));
+		P.append(pm.module->addWire(NEW_ID, 48-GetSize(P)));
 	cell->setPort(ID::P, P);
 
 	pm.blacklist(cell);
 }
 
-void xilinx_dsp48a_pack(xilinx_dsp48a_pm& pm)
+void xilinx_dsp48a_pack(xilinx_dsp48a_pm &pm)
 {
-	auto& st = pm.st_xilinx_dsp48a_pack;
+	auto &st = pm.st_xilinx_dsp48a_pack;
 
 	log("Analysing %s.%s for Xilinx DSP48A/DSP48A1 packing.\n", log_id(pm.module), log_id(st.dsp));
 
@@ -1069,8 +1066,8 @@ void xilinx_dsp48a_pack(xilinx_dsp48a_pm& pm)
 	log_debug("postAddMux: %s\n", log_id(st.postAddMux, "--"));
 	log_debug("ffP:        %s\n", log_id(st.ffP, "--"));
 
-	Cell* cell = st.dsp;
-	SigSpec& opmode = cell->connections_.at(ID(OPMODE));
+	Cell *cell = st.dsp;
+	SigSpec &opmode = cell->connections_.at(ID(OPMODE));
 
 	if (st.preAdd) {
 		log("  preadder %s (%s)\n", log_id(st.preAdd), log_id(st.preAdd->type));
@@ -1119,38 +1116,37 @@ void xilinx_dsp48a_pack(xilinx_dsp48a_pm& pm)
 	{
 		cell->setPort(ID::CLK, st.clock);
 
-		auto f = [&pm, cell](SigSpec& A, Cell* ff, IdString ceport, IdString rstport) {
-			SigSpec D = ff->getPort(ID::D);
-			SigSpec Q = pm.sigmap(ff->getPort(ID::Q));
-			if (!A.empty())
-				A.replace(Q, D);
-			if (rstport != IdString()) {
-				if (ff->type.in(ID($sdff), ID($sdffe))) {
-					SigSpec srst = ff->getPort(ID::SRST);
-					bool rstpol = ff->getParam(ID::SRST_POLARITY).as_bool();
-					cell->setPort(rstport, rstpol ? srst : pm.module->Not(NEW_ID, srst));
-				}
-				else {
-					cell->setPort(rstport, State::S0);
-				}
-			}
-			if (ff->type.in(ID($dffe), ID($sdffe))) {
-				SigSpec ce = ff->getPort(ID::EN);
-				bool cepol = ff->getParam(ID::EN_POLARITY).as_bool();
-				cell->setPort(ceport, cepol ? ce : pm.module->Not(NEW_ID, ce));
-			}
-			else
-				cell->setPort(ceport, State::S1);
+		auto f = [&pm,cell](SigSpec &A, Cell* ff, IdString ceport, IdString rstport) {
+		  SigSpec D = ff->getPort(ID::D);
+		  SigSpec Q = pm.sigmap(ff->getPort(ID::Q));
+		  if (!A.empty())
+			  A.replace(Q, D);
+		  if (rstport != IdString()) {
+			  if (ff->type.in(ID($sdff), ID($sdffe))) {
+				  SigSpec srst = ff->getPort(ID::SRST);
+				  bool rstpol = ff->getParam(ID::SRST_POLARITY).as_bool();
+				  cell->setPort(rstport, rstpol ? srst : pm.module->Not(NEW_ID, srst));
+			  } else {
+				  cell->setPort(rstport, State::S0);
+			  }
+		  }
+		  if (ff->type.in(ID($dffe), ID($sdffe))) {
+			  SigSpec ce = ff->getPort(ID::EN);
+			  bool cepol = ff->getParam(ID::EN_POLARITY).as_bool();
+			  cell->setPort(ceport, cepol ? ce : pm.module->Not(NEW_ID, ce));
+		  }
+		  else
+			  cell->setPort(ceport, State::S1);
 
-			for (auto c : Q.chunks()) {
-				auto it = c.wire->attributes.find(ID::init);
-				if (it == c.wire->attributes.end())
-					continue;
-				for (int i = c.offset; i < c.offset + c.width; i++) {
-					log_assert(it->second[i] == State::S0 || it->second[i] == State::Sx);
-					it->second[i] = State::Sx;
-				}
-			}
+		  for (auto c : Q.chunks()) {
+			  auto it = c.wire->attributes.find(ID::init);
+			  if (it == c.wire->attributes.end())
+				  continue;
+			  for (int i = c.offset; i < c.offset+c.width; i++) {
+				  log_assert(it->second[i] == State::S0 || it->second[i] == State::Sx);
+				  it->second[i] = State::Sx;
+			  }
+		  }
 		};
 
 		if (st.ffA0 || st.ffA1) {
@@ -1224,57 +1220,56 @@ void xilinx_dsp48a_pack(xilinx_dsp48a_pm& pm)
 
 	SigSpec P = st.sigP;
 	if (GetSize(P) < 48)
-		P.append(pm.module->addWire(NEW_ID, 48 - GetSize(P)));
+		P.append(pm.module->addWire(NEW_ID, 48-GetSize(P)));
 	cell->setPort(ID::P, P);
 
 	pm.blacklist(cell);
 }
 
-void xilinx_dsp_packC(xilinx_dsp_CREG_pm& pm)
+void xilinx_dsp_packC(xilinx_dsp_CREG_pm &pm)
 {
-	auto& st = pm.st_xilinx_dsp_packC;
+	auto &st = pm.st_xilinx_dsp_packC;
 
 	log_debug("Analysing %s.%s for Xilinx DSP packing (CREG).\n", log_id(pm.module), log_id(st.dsp));
 	log_debug("ffC:        %s\n", log_id(st.ffC, "--"));
 
-	Cell* cell = st.dsp;
+	Cell *cell = st.dsp;
 
 	if (st.clock != SigBit())
 	{
 		cell->setPort(ID::CLK, st.clock);
 
-		auto f = [&pm, cell](SigSpec& A, Cell* ff, IdString ceport, IdString rstport) {
-			SigSpec D = ff->getPort(ID::D);
-			SigSpec Q = pm.sigmap(ff->getPort(ID::Q));
-			if (!A.empty())
-				A.replace(Q, D);
-			if (rstport != IdString()) {
-				if (ff->type.in(ID($sdff), ID($sdffe))) {
-					SigSpec srst = ff->getPort(ID::SRST);
-					bool rstpol = ff->getParam(ID::SRST_POLARITY).as_bool();
-					cell->setPort(rstport, rstpol ? srst : pm.module->Not(NEW_ID, srst));
-				}
-				else {
-					cell->setPort(rstport, State::S0);
-				}
-			}
-			if (ff->type.in(ID($dffe), ID($sdffe))) {
-				SigSpec ce = ff->getPort(ID::EN);
-				bool cepol = ff->getParam(ID::EN_POLARITY).as_bool();
-				cell->setPort(ceport, cepol ? ce : pm.module->Not(NEW_ID, ce));
-			}
-			else
-				cell->setPort(ceport, State::S1);
+		auto f = [&pm,cell](SigSpec &A, Cell* ff, IdString ceport, IdString rstport) {
+		  SigSpec D = ff->getPort(ID::D);
+		  SigSpec Q = pm.sigmap(ff->getPort(ID::Q));
+		  if (!A.empty())
+			  A.replace(Q, D);
+		  if (rstport != IdString()) {
+			  if (ff->type.in(ID($sdff), ID($sdffe))) {
+				  SigSpec srst = ff->getPort(ID::SRST);
+				  bool rstpol = ff->getParam(ID::SRST_POLARITY).as_bool();
+				  cell->setPort(rstport, rstpol ? srst : pm.module->Not(NEW_ID, srst));
+			  } else {
+				  cell->setPort(rstport, State::S0);
+			  }
+		  }
+		  if (ff->type.in(ID($dffe), ID($sdffe))) {
+			  SigSpec ce = ff->getPort(ID::EN);
+			  bool cepol = ff->getParam(ID::EN_POLARITY).as_bool();
+			  cell->setPort(ceport, cepol ? ce : pm.module->Not(NEW_ID, ce));
+		  }
+		  else
+			  cell->setPort(ceport, State::S1);
 
-			for (auto c : Q.chunks()) {
-				auto it = c.wire->attributes.find(ID::init);
-				if (it == c.wire->attributes.end())
-					continue;
-				for (int i = c.offset; i < c.offset + c.width; i++) {
-					log_assert(it->second[i] == State::S0 || it->second[i] == State::Sx);
-					it->second[i] = State::Sx;
-				}
-			}
+		  for (auto c : Q.chunks()) {
+			  auto it = c.wire->attributes.find(ID::init);
+			  if (it == c.wire->attributes.end())
+				  continue;
+			  for (int i = c.offset; i < c.offset+c.width; i++) {
+				  log_assert(it->second[i] == State::S0 || it->second[i] == State::Sx);
+				  it->second[i] = State::Sx;
+			  }
+		  }
 		};
 
 		if (st.ffC) {
@@ -1295,17 +1290,16 @@ void xilinx_dsp_packC(xilinx_dsp_CREG_pm& pm)
 	pm.blacklist(cell);
 }
 
-void pirdsp_pack(pirdsp_pm& pm)
+void pirdsp_pack(pirdsp_pm &pm)
 {
-	auto& st = pm.st_pirdsp_pack;
-
+	auto &st = pm.st_pirdsp_pack;
 	log("Analysing %s.%s for pirdsp packing.\n", log_id(pm.module), log_id(st.dsp));
 
 	log_debug("preAdd:     %s\n", log_id(st.preAdd, "--"));
 	log_debug("ffAD:       %s\n", log_id(st.ffAD, "--"));
-	//	log_debug("ffA2:       %s\n", log_id(st.ffA2, "--"));
-	//	log_debug("ffA1:       %s\n", log_id(st.ffA1, "--"));
-		//log_debug("FIFO:       %s\n", log_id(st.FIFO, "--"));
+//	log_debug("ffA2:       %s\n", log_id(st.ffA2, "--"));
+//	log_debug("ffA1:       %s\n", log_id(st.ffA1, "--"));
+	//log_debug("FIFO:       %s\n", log_id(st.FIFO, "--"));
 	log_debug("ffB2:       %s\n", log_id(st.ffB2, "--"));
 	log_debug("ffB1:       %s\n", log_id(st.ffB1, "--"));
 	log_debug("ffD:        %s\n", log_id(st.ffD, "--"));
@@ -1320,34 +1314,17 @@ void pirdsp_pack(pirdsp_pm& pm)
 	log_debug("ffP:        %s\n", log_id(st.ffP, "--"));
 	log_debug("overflow:   %s\n", log_id(st.overflow, "--"));
 
-	Cell* cell = st.dsp;
+	Cell *cell = st.dsp;
 
 	//cell = pm.module->addCell(NEW_ID, ID(pirdsp2));
 
-
-	/*if (st.FIFO) {
-		log("  FIFO %s (%s)\n", log_id(st.FIFO), log_id(st.FIFO->type));
-
-		cell->setPort(ID::A, st.dsp->getPort(ID(A)));
-		cell->setPort(ID(A), st.FIFO->getPort(ID(A_MULT)));
-
-		SigSpec AMULT = st.FIFO->getPort(ID(A_MULT));
-		SigSpec A = st.FIFO->getPort(ID(A));
-
-		st.sigA2 = AMULT.extract(27, 27);
-		st.sigA1 = AMULT.extract(0, 27);
-
-		//cell->setPort(ID::A, st.sigA);
-
-		cell->setPort(ID::CLK, st.clock);
-		pm.autoremove(st.FIFO);
-	}*/
-
+        //TODO: Port B can be selected as input of pre-add.
 	if (st.preAdd) {
 		log("  preadder %s (%s)\n", log_id(st.preAdd), log_id(st.preAdd->type));
 		bool A_SIGNED = st.preAdd->getParam(ID::A_SIGNED).as_bool();
 		bool D_SIGNED = st.preAdd->getParam(ID::B_SIGNED).as_bool();
-
+                if (st.sigA == st.preAdd->getPort(ID::B))
+			std::swap(A_SIGNED, D_SIGNED);
 		st.sigA1.extend_u0(27, A_SIGNED);
 		st.sigD.extend_u0(27, D_SIGNED);
 
@@ -1356,17 +1333,6 @@ void pirdsp_pack(pirdsp_pm& pm)
 		cell->setPort(ID(INMODE), Const::from_string("00100"));
 		cell->setParam(ID(PREADDINSEL), Const("A"));
 
-		if (st.ffAD) {
-			if (st.ffAD->type.in(ID($dffe), ID($sdffe))) {
-				bool pol = st.ffAD->getParam(ID::EN_POLARITY).as_bool();
-				SigSpec S = st.ffAD->getPort(ID::EN);
-				cell->setPort(ID(CEAD), pol ? S : pm.module->Not(NEW_ID, S));
-			}
-			else
-				cell->setPort(ID(CEAD), State::S1);
-			cell->setParam(ID(ADREG), 1);
-		}
-
 		cell->setParam(ID(AMULTSEL), Const("A"));
 
 		pm.autoremove(st.preAdd);
@@ -1374,7 +1340,7 @@ void pirdsp_pack(pirdsp_pm& pm)
 	if (st.postAdd) {
 		log("  postadder %s (%s)\n", log_id(st.postAdd), log_id(st.postAdd->type));
 
-		SigSpec& opmode = cell->connections_.at(ID(OPMODE));
+		SigSpec &opmode = cell->connections_.at(ID(OPMODE));
 		if (st.postAddMux) {
 			log_assert(st.ffP);
 			opmode[4] = st.postAddMux->getPort(ID::S);
@@ -1410,7 +1376,7 @@ void pirdsp_pack(pirdsp_pm& pm)
 			// Since B is an exact power of 2, subtract 1
 			//   by inverting all bits up until hitting
 			//   that one hi bit
-			for (auto& b : B.bits)
+			for (auto &b : B.bits)
 				if (b == State::S0) b = State::S1;
 				else if (b == State::S1) {
 					b = State::S0;
@@ -1432,81 +1398,40 @@ void pirdsp_pack(pirdsp_pm& pm)
 	{
 		cell->setPort(ID::CLK, st.clock);
 
-		auto f = [&pm, cell](SigSpec& A, Cell* ff, IdString ceport, IdString rstport) {
-			SigSpec D = ff->getPort(ID::D);
-			SigSpec Q = pm.sigmap(ff->getPort(ID::Q));
-			if (!A.empty())
-				A.replace(Q, D);
-			if (rstport != IdString()) {
-				if (ff->type.in(ID($sdff), ID($sdffe))) {
-					SigSpec srst = ff->getPort(ID::SRST);
-					bool rstpol = ff->getParam(ID::SRST_POLARITY).as_bool();
-					cell->setPort(rstport, rstpol ? srst : pm.module->Not(NEW_ID, srst));
-				}
-				else {
-					cell->setPort(rstport, State::S0);
-				}
-			}
-			if (ff->type.in(ID($dffe), ID($sdffe))) {
-				SigSpec ce = ff->getPort(ID::EN);
-				bool cepol = ff->getParam(ID::EN_POLARITY).as_bool();
-				cell->setPort(ceport, cepol ? ce : pm.module->Not(NEW_ID, ce));
-			}
-			else
-				cell->setPort(ceport, State::S1);
+		auto f = [&pm,cell](SigSpec &A, Cell* ff, IdString ceport, IdString rstport) {
+		  SigSpec D = ff->getPort(ID::D);
+		  SigSpec Q = pm.sigmap(ff->getPort(ID::Q));
+		  if (!A.empty())
+			  A.replace(Q, D);
+		  if (rstport != IdString()) {
+			  if (ff->type.in(ID($sdff), ID($sdffe))) {
+				  SigSpec srst = ff->getPort(ID::SRST);
+				  bool rstpol = ff->getParam(ID::SRST_POLARITY).as_bool();
+				  cell->setPort(rstport, rstpol ? srst : pm.module->Not(NEW_ID, srst));
+			  } else {
+				  cell->setPort(rstport, State::S0);
+			  }
+		  }
+		  if (ff->type.in(ID($dffe), ID($sdffe))) {
+			  SigSpec ce = ff->getPort(ID::EN);
+			  bool cepol = ff->getParam(ID::EN_POLARITY).as_bool();
+			  cell->setPort(ceport, cepol ? ce : pm.module->Not(NEW_ID, ce));
+		  }
+		  else
+			  cell->setPort(ceport, State::S1);
 
-			for (auto c : Q.chunks()) {
-				auto it = c.wire->attributes.find(ID::init);
-				if (it == c.wire->attributes.end())
-					continue;
-				for (int i = c.offset; i < c.offset + c.width; i++) {
-					log_assert(it->second[i] == State::S0 || it->second[i] == State::Sx);
-					it->second[i] = State::Sx;
-				}
-			}
+		  for (auto c : Q.chunks()) {
+			  auto it = c.wire->attributes.find(ID::init);
+			  if (it == c.wire->attributes.end())
+				  continue;
+			  for (int i = c.offset; i < c.offset+c.width; i++) {
+				  log_assert(it->second[i] == State::S0 || it->second[i] == State::Sx);
+				  it->second[i] = State::Sx;
+			  }
+		  }
 		};
 
-		/*if (st.ffA2) {
-			SigSpec A = cell->getPort(ID::A);
-
-			SigSpec A2 = A.extract(27, 27);
-			SigSpec A1 = A.extract(0, 27);
-
-			SigSpec Ar2 = cell->getPort(ID::A).extract(27,27);
-
-			SigSpec &lps = cell->connections_.at(ID(LPS));
-
-			if (st.A1Mux) {
-				log_assert(st.ffA2);
-				lps = st.A1Mux->getPort(ID::S);
-				pm.autoremove(st.A1Mux);
-			}
-			else if (st.sigA2 == st.sigAr2)
-				lps = State::S0;
-			else
-				lps = State::S1;
-
-			if (lps != State::S0) {
-				if (st.A1MuxAB == ID::A)
-					st.sigA2.extend_u0(27, cell->getParam(ID::A_SIGNED).as_bool());
-			}
-
-			f(A, st.ffA2, ID(CEA2), ID(RSTA));
-
-			if (st.ffA1) {
-
-				f(A, st.ffA1, ID(CEA1), IdString());
-				cell->setParam(ID(AREG), 2);
-				cell->setParam(ID(ACASCREG), 2);
-			}
-			else {
-				cell->setParam(ID(AREG), 1);
-				cell->setParam(ID(ACASCREG), 1);
-			}
-
-			pm.add_siguser(A, cell);
-			cell->setPort(ID::A, A);
-		}*/
+		
 
 		if (st.ffB2) {
 			SigSpec B = cell->getPort(ID::B);
@@ -1514,23 +1439,23 @@ void pirdsp_pack(pirdsp_pm& pm)
 			SigSpec B2 = B.extract(27, 27);
 			SigSpec B1 = B.extract(0, 27);
 
-			SigSpec Br2 = cell->getPort(ID::B).extract(27, 27);
+			SigSpec Br2 = cell->getPort(ID::B).extract(27,27);
 
-			SigSpec& lps = cell->connections_.at(ID(LPS));
-
+			SigSpec &lps = cell->connections_.at(ID(LPS));
+                        //TODO: verify it.
 			if (st.B1Mux) {
 				log_assert(st.ffB2);
 				lps = st.B1Mux->getPort(ID::S);
 				pm.autoremove(st.B1Mux);
 			}
-			else if (st.ffB2 && st.sigB2 == st.sigBr2)
+			else if (st.ffB2 && st.sigBr1 == st.sigB2)
 				lps = State::S0;
 			else
 				lps = State::S1;
 
 			if (lps != State::S0) {
 				if (st.B1MuxAB == ID::B)
-					st.sigB2.extend_u0(27, cell->getParam(ID::B_SIGNED).as_bool());
+					st.sigBr1.extend_u0(27, cell->getParam(ID::B_SIGNED).as_bool());
 			}
 
 			f(B, st.ffB2, ID(CEB2), ID(RSTB));
@@ -1571,17 +1496,6 @@ void pirdsp_pack(pirdsp_pm& pm)
 
 		log("  clock: %s (%s)", log_signal(st.clock), "posedge");
 
-		/*if (st.ffA2) {
-			log(" ffA2:%s", log_id(st.ffA2));
-			if (st.ffA1) {
-				log(" ffA1:%s", log_id(st.ffA1));
-			}
-
-			if (st.A1Mux) {
-				log(" A1Mux:%s", log_id(st.A1Mux));
-			}
-
-		}*/
 
 		if (st.ffAD)
 			log(" ffAD:%s", log_id(st.ffAD));
@@ -1612,7 +1526,7 @@ void pirdsp_pack(pirdsp_pm& pm)
 
 	SigSpec P = st.sigP;
 	if (GetSize(P) < 48)
-		P.append(pm.module->addWire(NEW_ID, 48 - GetSize(P)));
+		P.append(pm.module->addWire(NEW_ID, 48-GetSize(P)));
 	cell->setPort(ID::P, P);
 
 	pm.blacklist(cell);
@@ -1662,22 +1576,22 @@ struct XilinxDspPass : public Pass {
 		log("        default: xc7\n");
 		log("\n");
 	}
-	void execute(std::vector<std::string> args, RTLIL::Design* design) override
+	void execute(std::vector<std::string> args, RTLIL::Design *design) override
 	{
 		log_header(design, "Executing XILINX_DSP pass (pack resources into DSPs).\n");
 
 		std::string family = "xc7";
 		size_t argidx;
+
 		for (argidx = 1; argidx < args.size(); argidx++)
 		{
-			if ((args[argidx] == "-family" || args[argidx] == "-arch") && argidx + 1 < args.size()) {
+			if ((args[argidx] == "-family" || args[argidx] == "-arch") && argidx+1 < args.size()) {
 				family = args[++argidx];
 				continue;
 			}
 			break;
 		}
 		extra_args(args, argidx, design);
-
 		// Don't bother distinguishing between those.
 		if (family == "xc6v")
 			family = "xc7";
@@ -1688,30 +1602,25 @@ struct XilinxDspPass : public Pass {
 
 			if (design->scratchpad_get_bool("xilinx_dsp.multonly"))
 				continue;
-
 			// Experimental feature: pack $add/$sub cells with
 			//   (* use_dsp48="simd" *) into DSP48E1's using its
 			//   SIMD feature
 			if (family == "xc7" || family == "xcu")
 				xilinx_simd_pack(module, module->selected_cells());
-			if (family == "pirdsp" || family == "apirdsp")
+			if (family == "pirdsp"||family == "apirdsp")
 				pirdsp_simd_pack(module, module->selected_cells());
-
 			// Match for all features ([ABDMP][12]?REG, pre-adder,
 			// post-adder, pattern detector, etc.) except for CREG
 			if (family == "xc7") {
 				xilinx_dsp_pm pm(module, module->selected_cells());
 				pm.run_xilinx_dsp_pack(xilinx_dsp_pack);
-			}
-			else if (family == "xc6s" || family == "xc3sda") {
+			} else if (family == "xc6s" || family == "xc3sda") {
 				xilinx_dsp48a_pm pm(module, module->selected_cells());
 				pm.run_xilinx_dsp48a_pack(xilinx_dsp48a_pack);
-			}
-			else if (family == "xcu") {
+			} else if (family == "xcu") {
 				xilinx_dsp48e2_pm pm(module, module->selected_cells());
 				pm.run_xilinx_dsp48e2_pack(xilinx_dsp48e2_pack);
-			}
-			else if (family == "pirdsp" || family == "apirdsp") {
+			} else if (family == "pirdsp"||family == "apirdsp") {
 				pirdsp_pm pm(module, module->selected_cells());
 				pm.run_pirdsp_pack(pirdsp_pack);
 			}

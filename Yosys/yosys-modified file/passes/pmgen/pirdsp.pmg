@@ -2,7 +2,7 @@ pattern pirdsp_pack
 
 state <SigBit> clock
 state <SigSpec> sigA sigB sigC sigD sigM sigP
-state <SigSpec> sigA1 sigA2 sigAr2 sigB1 sigB2 sigBr2
+state <SigSpec> sigA1 sigA2 sigAr2 sigB1 sigB2 sigBr1 sigBr2
 
 state <IdString> A1MuxAB B1MuxAB
 
@@ -37,13 +37,9 @@ code sigA sigB sigC sigD sigM clock sigA1 sigA2 sigB1 sigB2 sigAr2 sigBr2
 	sigA = unextend(port(dsp, \A));
 	sigB = unextend(port(dsp, \B));
 
-	sigA1 = sigA.extract(0, 27);
-	sigA2 = sigA.extract(27, 27);
+	//sigB1 = port(dsp, \B).extract(0, 27);
+	//sigB2 = port(dsp, \B).extract(27, 27);
 
-	sigB1 = sigB.extract(0, 27);
-	sigB2 = sigB.extract(27, 27);
-
-    sigAr2 = port(dsp, \A).extract(27, 27);
     sigBr2 = port(dsp, \B).extract(27, 27);
 
 	sigC = port(dsp, \C, SigSpec());
@@ -72,17 +68,6 @@ endcode
 
 // (2) Match the driver of the 'A' input to a possible $sdffe cell 
 
-code argQ ffAD sigA2 clock sigAr2 sigA
-	if (param(dsp, \ADREG).as_int() == 0) {
-		argQ = sigA2;
-		subpattern(in_dffe);
-		if (dff) {
-			ffAD = dff;
-			clock = dffclock;
-			sigA = dffD;
-		}
-	}
-endcode
 
 match preAdd
 	if sigD.empty() || sigD.is_fully_zero()
@@ -95,94 +80,43 @@ match preAdd
 	select GetSize(port(preAdd, \Y)) <= 27
 	select nusers(port(preAdd, \Y)) == 2
 	choice <IdString> AB {\A, \B}
-	// A port has to be 30 bits or less
+	// A port has to be 27 bits or less
 	select GetSize(port(preAdd, AB)) <= 27
 	define <IdString> BA (AB == \A ? \B : \A)
 	// D port has to be 27 bits or less
 	select GetSize(port(preAdd, BA)) <= 27
-	index <SigSpec> port(preAdd, \Y) === sigA2
+	index <SigSpec> port(preAdd, \Y) === sigA
 
 	optional
 endmatch
-
-code sigA2 sigB2 sigD
+//TODO: Port B can be selected as input of pre-add.
+code sigA sigB2 sigD
 	if (preAdd) {
 		if(param(dsp, \PREADDINSEL).decode_string() == "A"){
-				sigA2 = port(preAdd, \A);
-				sigD = port(preAdd, \B);
-		}
-		if(param(dsp, \PREADDINSEL).decode_string() == "B"){
-				sigB2 = port(preAdd, \A);
+				sigA = port(preAdd, \A);
 				sigD = port(preAdd, \B);
 		}
 
 	}
 endcode
 
-code argQ clock ffA2 ffA1 sigA sigA1 sigA2 ffAD sigAr2
-
-	if (preAdd) {
-		if (param(dsp, \AREG).as_int() == 0) {
-			argQ = sigA2;
-			subpattern(in_dffe);
-			if (dff) {
-				ffA2 = dff;
-				clock = dffclock;
-				sigA = dffD;
-			}
-		}
-	}
-	// And if there wasn't a pre-adder,
-	//   move AD register to A
-	else if (ffAD) {
-		log_assert(!ffA2);
-		std::swap(ffA2, ffAD);
-	}
-
-	// Now attempt to match A1
-	if (ffA2) {
-		argQ = sigA1;
-		subpattern(in_dffe);
-		if (dff) {
-			if (dff->type != ffA2->type)
-				goto ffA1_end;
-			if (dff->type.in($sdff, $sdffe, $sdffce)) {
-				if (param(dff, \SRST_POLARITY) != param(ffA2, \SRST_POLARITY))
-					goto ffA1_end;
-				if (port(dff, \SRST) != port(ffA2, \SRST))
-					goto ffA1_end;
-			}
-			if (dff->type.in($dffe, $sdffe, $sdffce)) {
-				if (param(dff, \EN_POLARITY) != param(ffA2, \EN_POLARITY))
-					goto ffA1_end;
-				if (port(dff, \EN) != port(ffA2, \EN))
-					goto ffA1_end;
-			}
-
-			ffA1 = dff;
-			clock = dffclock;
-			sigA = dffD;
-
-ffA1_end:		;
-		}
-	}
-endcode
 
 
 // (5) Match 'B' input for B2REG
 //     If B2REG, then match 'B' input for B1REG
-code argQ ffB2 sigB clock ffB1 sigB1 sigB2 sigB sigBr2
+code argQ ffB2 sigB clock ffB1 sigB1 sigB2 sigB sigBr2 sigBr1
 	if (param(dsp, \BREG).as_int() == 0) {
-		argQ = sigB2;
+		argQ = sigB;
 		subpattern(in_dffe);
 		if (dff) {
 			ffB2 = dff;
 			clock = dffclock;
 			sigB = dffD;
-
+			sigB2 = dffD;
+                                               sigBr2 = dffQ;
 			// Now attempt to match B1
 			if (ffB2) {
-				argQ = sigB1;
+				argQ = sigB;
 				subpattern(in_dffe);
 				if (dff) {
 					if (dff->type != ffB2->type)
@@ -203,7 +137,8 @@ code argQ ffB2 sigB clock ffB1 sigB1 sigB2 sigB sigBr2
 					ffB1 = dff;
 					clock = dffclock;
 					sigB = dffD;
-
+					sigB1 = dffD;
+                                        sigBr1 = dffQ;
 ffB1_end:				;
 				}
 			}
@@ -213,37 +148,21 @@ ffB1_end:				;
 endcode
 
 
-match A1Mux
-	if port(dsp, \LPS, Const(0)).is_fully_zero()
-	select A1Mux->type.in($mux)
-	select nusers(port(A1Mux, \Y)) == 2
-	choice <IdString> AB {\A, \B}
-	index <SigSpec> port(A1Mux, AB) === sigAr2
-	index <SigSpec> port(A1Mux, \Y) === sigA2
-	set A1MuxAB AB
-	optional
-endmatch
-
-code sigA2
-	if (A1Mux)
-		sigA2 = port(A1Mux, A1MuxAB == \A ? \B : \A);
-endcode
-
 
 match B1Mux
 	if port(dsp, \LPS, Const(0)).is_fully_zero()
 	select B1Mux->type.in($mux)
 	select nusers(port(B1Mux, \Y)) == 2
 	choice <IdString> AB {\A, \B}
-	index <SigSpec> port(B1Mux, AB) === sigBr2
+	index <SigSpec> port(B1Mux, AB) === sigBr1
 	index <SigSpec> port(B1Mux, \Y) === sigB2
 	set B1MuxAB AB
 	optional
 endmatch
 
-code sigB2
+code sigBr1
 	if (B1Mux)
-		sigB2 = port(B1Mux, B1MuxAB == \A ? \B : \A);
+		sigBr1 = port(B1Mux, B1MuxAB == \A ? \B : \A);
 endcode
 
 
