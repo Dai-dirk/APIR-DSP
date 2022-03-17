@@ -113,7 +113,7 @@ code argQ ffB2 sigB clock ffB1 sigB1 sigB2 sigB sigBr2 sigBr1
 			clock = dffclock;
 			sigB = dffD;
 			sigB2 = dffD;
-                                               sigBr2 = dffQ;
+                        sigBr2 = dffQ;
 			// Now attempt to match B1
 			if (ffB2) {
 				argQ = sigB;
@@ -154,15 +154,15 @@ match B1Mux
 	select B1Mux->type.in($mux)
 	select nusers(port(B1Mux, \Y)) == 2
 	choice <IdString> AB {\A, \B}
-	index <SigSpec> port(B1Mux, AB) === sigBr1
+	index <SigSpec> port(B1Mux, AB) === sigBr2
 	index <SigSpec> port(B1Mux, \Y) === sigB2
 	set B1MuxAB AB
 	optional
 endmatch
 
-code sigBr1
+code sigB
 	if (B1Mux)
-		sigBr1 = port(B1Mux, B1MuxAB == \A ? \B : \A);
+		sigB = port(B1Mux, B1MuxAB == \A ? \B : \A);
 endcode
 
 

@@ -304,7 +304,7 @@ struct SynthPirdspPass : public ScriptPass
 			if (help_mode)
 				run("techmap -map +/mul2dsp.v {options}");
 			else if (family == "pirdsp" || family == "apirdsp") {
-				run("techmap -map +/mul2dsp.v -D DSP_A_MAXWIDTH=27 -D DSP_B_MAXWIDTH=27 "
+				run("techmap -map +/mul2dsp.v -D DSP_A_MAXWIDTH=30 -D DSP_B_MAXWIDTH=18 "
 
 				    "-D DSP_A_MINWIDTH=10 -D DSP_B_MINWIDTH=10 " // Blocks Nx1 multipliers
 				    "-D DSP_Y_MINWIDTH=20 "			 // UG901 suggests small multiplies are those 4x4 and smaller
@@ -320,16 +320,15 @@ struct SynthPirdspPass : public ScriptPass
 				    "-D DSP_NAME=$__MULT9X9");
 				run("stat");
 				//run("show");
-				run("chtype -set $mul t:$__soft_mul");
-				//run("techmap -map +/mul2dsp.v -D DSP_A_MAXWIDTH=5 -D DSP_B_MAXWIDTH=5 "
+				/*run("chtype -set $mul t:$__soft_mul");
+				run("techmap -map +/mul2dsp.v -D DSP_A_MAXWIDTH=5 -D DSP_B_MAXWIDTH=5 "
 
-				  //  "-D DSP_A_MINWIDTH=2 -D DSP_B_MINWIDTH=2 " // Blocks Nx1 multipliers
-				  ///  "-D DSP_Y_MINWIDTH=6 "		       // UG901 suggests small multiplies are those 4x4 and smaller
+				    "-D DSP_A_MINWIDTH=2 -D DSP_B_MINWIDTH=2 " // Blocks Nx1 multipliers
+				    "-D DSP_Y_MINWIDTH=4 "		       // UG901 suggests small multiplies are those 4x4 and smaller
 				    //  "-D DSP_SIGNEDONLY=0 -D DSP_NAME=$__MULT9X9");
-				 //   "-D DSP_NAME=$__MULT4X4");
-				//run("stat");
-				//run("show");
-				//run("chtype -set $mul t:$__soft_mul");
+				    "-D DSP_NAME=$__MULT4X4");
+				run("stat");*/
+				run("chtype -set $mul t:$__soft_mul");
 			}
 			else if (family == "xcu") {
 				run("techmap -map +/mul2dsp.v -D DSP_A_MAXWIDTH=27 -D DSP_B_MAXWIDTH=18 "
@@ -344,6 +343,7 @@ struct SynthPirdspPass : public ScriptPass
 				//run("show");
 			}
 			//run("connwrappers -signed $__MULT9X9 Y Y_WIDTH");
+                         //run("aa");
 			run("stat");
 			run("select a:mul2dsp");
 			run("setattr -unset mul2dsp");
@@ -352,7 +352,11 @@ struct SynthPirdspPass : public ScriptPass
 			run("select -clear");
 
 			if(family == "pirdsp" || family == "apirdsp") {
-
+                                
+                                /*run("techmap -map +/pirdsp/mul_99wrap.v");
+                                run("connwrappers  -unsigned $__MULT9X9_wrapper Y Y_WIDTH -unsigned $__add_wrapper Y Y_WIDTH ");
+                                run("opt");
+                                //run("opst");
 				run("design -push");
 				run("read_verilog +/pirdsp/multimult_9X9.v");
 				//run("techmap -map +/pirdsp/mult9X9.v");
@@ -361,11 +365,19 @@ struct SynthPirdspPass : public ScriptPass
 				    "-D DSP_Y_MINWIDTH=10 "
 				    //  "-D DSP_SIGNEDONLY=0 -D DSP_NAME=$__MULT9X9");
 				    "-D DSP_NAME=$__MULT9X9");
+                                run("opt");
+                                run("techmap -map +/pirdsp/mul_99wrap.v");
+                                run("opt");
+                                run("connwrappers  -unsigned $__MULT9X9_wrapper Y Y_WIDTH -unsigned $__add_wrapper Y Y_WIDTH ");
 				run("design -save __multimult_9X9");
+					//run("stats");
 				run("design -pop");
+				//run("desss");
 				run("extract -constports -ignore_parameters -map %__multimult_9X9");
 				run("stat");
-
+                                run("techmap -map +/pirdsp/mul_99unwrap.v");
+			        run("techmap -map +/pirdsp/mul_99map.v");
+                                //run("desss");*/
 				/*run("design -push");
 				run("read_verilog +/pirdsp/multimult_4X4.v");
 				run("techmap -map +/mul2dsp.v -D DSP_A_MAXWIDTH=5 -D DSP_B_MAXWIDTH=5 "
@@ -383,14 +395,12 @@ struct SynthPirdspPass : public ScriptPass
 				run("extract -constports -ignore_parameters -map +/pirdsp/A_FIFO.v");*/
 
 			}
-			//run("show");
 			run("opt_expr");
 			run("opt_clean");
 			run("check");
 			run("opt -nodffe -nosdff");
-			//run("show");
 			run("fsm");
-			run("opt");
+			run("opt ");
 			if (help_mode)
 				run("wreduce [-keepdc]", "(option for '-widemux')");
 			else
@@ -418,24 +428,36 @@ struct SynthPirdspPass : public ScriptPass
 				// NB: Xilinx multipliers are signed only
 				if (family == "pirdsp" || family == "apirdsp") {
 					//run("techmap -map +/pirdsp/unwrap.v");
-					//run("stat");
 					run("techmap -map +/xilinx/pirdsp_dsp_map.v");
-					run("stat");
+                                        run("opt");
+                                        run("techmap -map +/xilinx/add_flag.v ");
+                                        run("opt_clean");
+			                //run("shows");
+                                        run("xilinx_dsp -family " + family);
+                                        run("opt");
+                                        //run("techmap -map +/xilinx/add_unflag.v ");
+                                        run("opt");
+					run("techmap -map +/xilinx/dsp_finalmap.v");
 				}
-				else if (family == "xcu")
+				else if (family == "xcu"){
 					run("techmap -map +/xilinx/xcu_dsp_map.v ");
+                                        run("opt_clean");
+                                        run("techmap -map +/xilinx/add_flag.v ");
+                                   }
 				run("stat");
-				//run("show");
-
+				
 				if (help_mode)
 					run("debug xilinx_dsp -family <family>");
 				else
-					run("debug xilinx_dsp -family " + family);
+					run("xilinx_dsp -family " + family);
 				run("stat");
-				//run("show");
+                                run("techmap -map +/xilinx/add_unflag.v ");
+                                //run("opts");
+                   
 				run("chtype -set $mul t:$__soft_mul");
 			}
 		}
+			//run("shosw");
 
 		if (check_label("coarse")) {
 			run("techmap -map +/cmp2lut.v -map +/cmp2lcu.v -D LUT_WIDTH=" + lut_size_s);
@@ -596,11 +618,11 @@ struct SynthPirdspPass : public ScriptPass
 					if (nowidelut)
 						abc_opts += " -luts 2:2,3,6:5";
 					else if (widelut_size == 8)
+						abc_opts += " -luts 2:2,3,6:5";
 						//abc_opts += " -luts 2:2,3,6:5,10,20";
-						abc_opts += " -luts 2:2,3,6:5";
 					else
-						//abc_opts += " -luts 2:2,3,6:5,10,20,40";
 						abc_opts += " -luts 2:2,3,6:5";
+						//abc_opts += " -luts 2:2,3,6:5,10,20,40";
 				}
 				if (dff)
 					abc_opts += " -dff";

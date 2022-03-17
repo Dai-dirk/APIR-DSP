@@ -1,4 +1,4 @@
- // This file describes the main pattern matcher setup (of three total) that
+                                                                                                                                                                                           // This file describes the main pattern matcher setup (of three total) that
 //   forms the `xilinx_dsp` pass described in xilinx_dsp.cc
 // At a high level, it works as follows:
 //   ( 1) Starting from a DSP48E2 cell
@@ -145,7 +145,7 @@ match preAdd
 	optional
 endmatch
 
-code sigA sigD
+code sigA sigB sigD
 	if (preAdd) {
 		if(param(dsp, \PREADDINSEL).decode_string() == "A"){
 				sigA = port(preAdd, \A);
@@ -202,6 +202,18 @@ code argQ ffAD sigA clock ffA2 ffA1
 				if (port(dff, \EN) != port(ffA2, \EN))
 					goto ffA1_end;
 			}
+			if (dff->type.in($adff, $adffe)) {
+				if (param(dff, \ARST_POLARITY) != param(ffA2, \ARST_POLARITY))
+					goto ffA1_end;
+				if (port(dff, \ARST) != port(ffA2, \ARST))
+					goto ffA1_end;
+			}
+			if (dff->type.in($adffe)) {
+				if (param(dff, \EN_POLARITY) != param(ffA2, \EN_POLARITY))
+					goto ffA1_end;
+				if (port(dff, \EN) != port(ffA2, \EN))
+					goto ffA1_end;
+			}
 
 			ffA1 = dff;
 			clock = dffclock;
@@ -237,6 +249,18 @@ code argQ ffB2 sigB clock ffB1
 							goto ffB1_end;
 					}
 					if (dff->type.in($dffe, $sdffe, $sdffce)) {
+						if (param(dff, \EN_POLARITY) != param(ffB2, \EN_POLARITY))
+							goto ffB1_end;
+						if (port(dff, \EN) != port(ffB2, \EN))
+							goto ffB1_end;
+					}
+                                        if (dff->type.in($adff, $adffe)) {
+						if (param(dff, \ARST_POLARITY) != param(ffB2, \ARST_POLARITY))
+							goto ffB1_end;
+						if (port(dff, \ARST) != port(ffB2, \ARST))
+							goto ffB1_end;
+					}
+					if (dff->type.in($adffe)) {
 						if (param(dff, \EN_POLARITY) != param(ffB2, \EN_POLARITY))
 							goto ffB1_end;
 						if (port(dff, \EN) != port(ffB2, \EN))
@@ -290,12 +314,12 @@ endcode
 match postAdd
 	// Ensure that Z mux is not already used
 	if port(dsp, \OPMODE, SigSpec(0, 9)).extract(4,3).is_fully_zero()
-
-	select postAdd->type.in($add)
+        
+	select postAdd->type.in($__add_flag)
 	select GetSize(port(postAdd, \Y)) <= 48
 	choice <IdString> AB {\A, \B}
 	select nusers(port(postAdd, AB)) == 2
-
+        filter param(postAdd, \PACK).is_fully_zero()
 	index <SigBit> port(postAdd, AB)[0] === sigP[0]
 	filter GetSize(port(postAdd, AB)) >= GetSize(sigP)
 	filter port(postAdd, AB).extract(0, GetSize(sigP)) == sigP
@@ -408,13 +432,13 @@ code
 endcode
 
 match ff
-	select ff->type.in($dff, $dffe, $sdff, $sdffe)
+	select ff->type.in($dff, $dffe, $sdff, $sdffe, $adff, $adffe)
 	// DSP48E1 does not support clock inversion
 	select param(ff, \CLK_POLARITY).as_bool()
 
 	// Check that reset value, if present, is fully 0.
-	filter ff->type.in($dff, $dffe) || param(ff, \SRST_VALUE).is_fully_zero()
-
+	//filter ff->type.in($dff, $dffe) || param(ff, \ARST_VALUE).is_fully_zero()
+        //filter ff->type.in($dff, $dffe) || param(ff, \ARST_VALUE).is_fully_zero()
 	slice offset GetSize(port(ff, \D))
 	index <SigBit> port(ff, \Q)[offset] === argQ[0]
 

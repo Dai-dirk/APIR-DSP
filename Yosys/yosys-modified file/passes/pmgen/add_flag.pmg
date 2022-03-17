@@ -1,0 +1,95 @@
+// This file describes the .pmg for packing inreg of the stratixiv
+//add A and B port connect to DSP is not allow.
+pattern add_flag
+
+udata <std::function<SigSpec(const SigSpec&)>> unextend
+state <SigBit> clock
+state <SigSpec> sigA sigB
+state <Cell*> ffA ffB
+
+// Variables used for subpatterns
+state <SigSpec> argQ argD
+state <int> ffoffset
+udata <SigSpec> dffD dffQ
+udata <SigBit> dffclock
+udata <Cell*> dff
+
+// (1) 
+match add
+	select add->type.in($__add_flag)
+endmatch
+
+code sigA sigB
+	unextend = [](const SigSpec &sig) {
+		int i;
+		for (i = GetSize(sig)-1; i > 0; i--)
+			if (sig[i] != sig[i-1])
+				break;
+		// Do not remove non-const sign bit
+		if (sig[i].wire)
+			++i;
+		return sig.extract(0, i);
+	};
+	sigA = unextend(port(add, \A, SigSpec()));
+        sigB = unextend(port(add, \B, SigSpec()));
+endcode
+
+// (2) 
+code argQ ffA sigA 
+	argQ = sigA;
+	subpattern(flag);
+	if (dff) {
+		ffA = dff;
+	}
+endcode
+
+code argQ ffB sigB clock
+	argQ = sigB;
+	subpattern(flag);
+	if (dff) {
+		ffB = dff;
+	}
+endcode
+
+code
+	if ((ffA&&ffB))
+		accept;
+endcode
+
+// #######################
+
+// Subpattern for matching against input registers, based on knowledge of the
+//   'Q' input.
+subpattern flag
+arg argQ 
+
+code
+	dff = nullptr;
+	if (argQ.empty())
+		reject;
+	for (const auto &c : argQ.chunks()) {
+		// Abandon matches when 'Q' is a constant
+		if (!c.wire)
+			reject;
+		// Abandon matches when 'Q' has the keep attribute set
+		if (c.wire->get_bool_attribute(\keep))
+			reject;
+		// Abandon matches when 'Q' has a non-zero init attribute set
+		// (not supported by DSP48E1)
+		Const init = c.wire->attributes.at(\init, Const());
+		if (!init.empty())
+			for (auto b : init.extract(c.offset, c.width))
+				if (b != State::Sx && b != State::S0)
+					reject;
+	}
+endcode
+
+match ff
+	select ff->type.in(\DSP48E2,\apirdsp)
+
+	// Check that reset value, if present, is fully 0.
+	filter ff->type.in(\DSP48E2,\apirdsp)
+endmatch
+code argQ
+	dff = ff;
+endcode

@@ -471,7 +471,7 @@ FDPE #(.ZINI(!|INIT), .IS_C_INVERTED(|1))
 
 endmodule
 */
-/*
+
 module CARRY_COUT_PLUG(input CIN, output COUT);
 
 assign COUT = CIN;
@@ -608,9 +608,9 @@ module CARRY4_COUT(output [3:0] CO, O, output COUT, input CI, CYINIT, input [3:0
     );
   end
 endmodule
-*/
 
-module CARRY_COUT_PLUG(input CIN, output COUT);
+
+/*module CARRY_COUT_PLUG(input CIN, output COUT);
 
 assign COUT = CIN;
 
@@ -738,4 +738,4 @@ module CARRY4_COUT(output [3:0] CO, O, output COUT, input CI, CYINIT, input [3:0
         .CI(CI)
     );
   end
-endmodule
+endmodule*/

@@ -37,6 +37,8 @@ USING_YOSYS_NAMESPACE
 #include "passes/pmgen/xilinx_dsp_cascade_pm.h"
 
 #include "passes/pmgen/pirdsp_pm.h"
+#include "passes/pmgen/apirdsp_pm.h"
+#include "passes/pmgen/add_flag_pm.h"
 
 static Cell* addDsp(Module *module) {
 	Cell *cell = module->addCell(NEW_ID, ID(DSP48E1));
@@ -939,7 +941,11 @@ void xilinx_dsp48e2_pack(xilinx_dsp48e2_pm &pm)
 				  SigSpec srst = ff->getPort(ID::SRST);
 				  bool rstpol = ff->getParam(ID::SRST_POLARITY).as_bool();
 				  cell->setPort(rstport, rstpol ? srst : pm.module->Not(NEW_ID, srst));
-			  } else {
+			  } else if (ff->type.in(ID($adff), ID($adffe))) {
+					SigSpec rst = ff->getPort(ID::ARST);
+					//bool rstpol = ff->getParam(ID::ARST_POLARITY).as_bool();
+					cell->setPort(rstport,  rst);
+				} else {
 				  cell->setPort(rstport, State::S0);
 			  }
 		  }
@@ -948,9 +954,13 @@ void xilinx_dsp48e2_pack(xilinx_dsp48e2_pm &pm)
 			  bool cepol = ff->getParam(ID::EN_POLARITY).as_bool();
 			  cell->setPort(ceport, cepol ? ce : pm.module->Not(NEW_ID, ce));
 		  }
-		  else
+		  else if (ff->type.in(ID($adffe))) {
+			  SigSpec ce = ff->getPort(ID::EN);
+			  bool cepol = ff->getParam(ID::EN_POLARITY).as_bool();
+			  cell->setPort(ceport, cepol ? ce : pm.module->Not(NEW_ID, ce));
+		  }
+                  else
 			  cell->setPort(ceport, State::S1);
-
 		  for (auto c : Q.chunks()) {
 			  auto it = c.wire->attributes.find(ID::init);
 			  if (it == c.wire->attributes.end())
@@ -1089,7 +1099,7 @@ void xilinx_dsp48a_pack(xilinx_dsp48a_pm &pm)
 	}
 	if (st.postAdd) {
 		log("  postadder %s (%s)\n", log_id(st.postAdd), log_id(st.postAdd->type));
-
+                cell->setParam(ID(PACK), 1);
 		if (st.postAddMux) {
 			log_assert(st.ffP);
 			opmode[2] = st.postAddMux->getPort(ID::S);
@@ -1290,7 +1300,7 @@ void xilinx_dsp_packC(xilinx_dsp_CREG_pm &pm)
 	pm.blacklist(cell);
 }
 
-void pirdsp_pack(pirdsp_pm &pm)
+/*void pirdsp_pack(pirdsp_pm &pm)
 {
 	auto &st = pm.st_pirdsp_pack;
 	log("Analysing %s.%s for pirdsp packing.\n", log_id(pm.module), log_id(st.dsp));
@@ -1530,9 +1540,261 @@ void pirdsp_pack(pirdsp_pm &pm)
 	cell->setPort(ID::P, P);
 
 	pm.blacklist(cell);
+}*/
+
+void apirdsp_pack(apirdsp_pm &pm)
+{
+	auto &st = pm.st_apirdsp_pack;
+
+	log("Analysing %s.%s for Xilinx DSP48E2 packing.\n", log_id(pm.module), log_id(st.dsp));
+
+	log_debug("preAdd:     %s\n", log_id(st.preAdd, "--"));
+	log_debug("ffAD:       %s\n", log_id(st.ffAD, "--"));
+	log_debug("ffA2:       %s\n", log_id(st.ffA2, "--"));
+	log_debug("ffA1:       %s\n", log_id(st.ffA1, "--"));
+	log_debug("ffB2:       %s\n", log_id(st.ffB2, "--"));
+	log_debug("ffB1:       %s\n", log_id(st.ffB1, "--"));
+	log_debug("ffD:        %s\n", log_id(st.ffD, "--"));
+	log_debug("dsp:        %s\n", log_id(st.dsp, "--"));
+	log_debug("ffM:        %s\n", log_id(st.ffM, "--"));
+	log_debug("postAdd:    %s\n", log_id(st.postAdd, "--"));
+	log_debug("postAddMux: %s\n", log_id(st.postAddMux, "--"));
+	log_debug("ffP:        %s\n", log_id(st.ffP, "--"));
+	log_debug("overflow:   %s\n", log_id(st.overflow, "--"));
+
+	Cell *cell = st.dsp;
+	if (st.preAdd) {
+		log("  preadder %s (%s)\n", log_id(st.preAdd), log_id(st.preAdd->type));
+		bool A_SIGNED = st.preAdd->getParam(ID::A_SIGNED).as_bool();
+		bool D_SIGNED = st.preAdd->getParam(ID::B_SIGNED).as_bool();
+		if (st.sigA == st.preAdd->getPort(ID::B))
+			std::swap(A_SIGNED, D_SIGNED);
+		st.sigA.extend_u0(30, A_SIGNED);
+		st.sigD.extend_u0(27, D_SIGNED);
+		st.sigB.extend_u0(27, D_SIGNED);
+
+		cell->setPort(ID::A, st.sigA);
+		cell->setPort(ID::D, st.sigD);
+		cell->setPort(ID(INMODE), Const::from_string("00100"));
+		cell->setParam(ID(PREADDINSEL), Const("A"));
+
+		if (st.ffAD) {
+			if (st.ffAD->type.in(ID($dffe), ID($sdffe))) {
+				bool pol = st.ffAD->getParam(ID::EN_POLARITY).as_bool();
+				SigSpec S = st.ffAD->getPort(ID::EN);
+				cell->setPort(ID(CEAD), pol ? S : pm.module->Not(NEW_ID, S));
+			}
+			else
+				cell->setPort(ID(CEAD), State::S1);
+			cell->setParam(ID(ADREG), 1);
+		}
+
+		cell->setParam(ID(USE_DPORT), Const("TRUE"));
+
+		pm.autoremove(st.preAdd);
+	}
+	if (st.postAdd) {
+		log("  postadder %s (%s)\n", log_id(st.postAdd), log_id(st.postAdd->type));
+
+		SigSpec &opmode = cell->connections_.at(ID(OPMODE));
+		if (st.postAddMux) {
+			log_assert(st.ffP);
+			opmode[4] = st.postAddMux->getPort(ID::S);
+			pm.autoremove(st.postAddMux);
+		}
+		else if (st.ffP && st.sigC == st.sigP)
+			opmode[4] = State::S0;
+		else
+			opmode[4] = State::S1;
+
+		opmode[6] = State::S0;
+		opmode[5] = State::S1;
+
+		if (opmode[4] != State::S0) {
+			if (st.postAddMuxAB == ID::A)
+				st.sigC.extend_u0(48, st.postAdd->getParam(ID::B_SIGNED).as_bool());
+			else
+				st.sigC.extend_u0(48, st.postAdd->getParam(ID::A_SIGNED).as_bool());
+			cell->setPort(ID::C, st.sigC);
+		}
+
+		pm.autoremove(st.postAdd);
+	}
+	if (st.overflow) {
+		log("  overflow %s (%s)\n", log_id(st.overflow), log_id(st.overflow->type));
+		cell->setParam(ID(USE_PATTERN_DETECT), Const("PATDET"));
+		cell->setParam(ID(SEL_PATTERN), Const("PATTERN"));
+		cell->setParam(ID(SEL_MASK), Const("MASK"));
+
+		if (st.overflow->type == ID($ge)) {
+			Const B = st.overflow->getPort(ID::B).as_const();
+			log_assert(std::count(B.bits.begin(), B.bits.end(), State::S1) == 1);
+			// Since B is an exact power of 2, subtract 1
+			//   by inverting all bits up until hitting
+			//   that one hi bit
+			for (auto &b : B.bits)
+				if (b == State::S0) b = State::S1;
+				else if (b == State::S1) {
+					b = State::S0;
+					break;
+				}
+			B.extu(48);
+
+			cell->setParam(ID(MASK), B);
+			cell->setParam(ID(PATTERN), Const(0, 48));
+			cell->setPort(ID(OVERFLOW), st.overflow->getPort(ID::Y));
+		}
+		else log_abort();
+
+		pm.autoremove(st.overflow);
+	}
+
+	if (st.clock != SigBit())
+	{
+		cell->setPort(ID::CLK, st.clock);
+
+		auto f = [&pm,cell](SigSpec &A, Cell* ff, IdString ceport, IdString rstport) {
+		  SigSpec D = ff->getPort(ID::D);
+		  SigSpec Q = pm.sigmap(ff->getPort(ID::Q));
+		  if (!A.empty())
+			  A.replace(Q, D);
+		  if (rstport != IdString()) {
+			  if (ff->type.in(ID($sdff), ID($sdffe))) {
+				  SigSpec srst = ff->getPort(ID::SRST);
+				  bool rstpol = ff->getParam(ID::SRST_POLARITY).as_bool();
+				  cell->setPort(rstport, rstpol ? srst : pm.module->Not(NEW_ID, srst));
+			  }else if (ff->type.in(ID($adff), ID($adffe))) {
+					SigSpec rst = ff->getPort(ID::ARST);
+					//bool rstpol = ff->getParam(ID::ARST_POLARITY).as_bool();
+					cell->setPort(rstport,  rst);
+				} else {
+				  cell->setPort(rstport, State::S0);
+			  }
+		  }
+		  if (ff->type.in(ID($dffe), ID($sdffe))) {
+			  SigSpec ce = ff->getPort(ID::EN);
+			  bool cepol = ff->getParam(ID::EN_POLARITY).as_bool();
+			  cell->setPort(ceport, cepol ? ce : pm.module->Not(NEW_ID, ce));
+		  }
+		  else if (ff->type.in(ID($adffe))) {
+			  SigSpec ce = ff->getPort(ID::EN);
+			  bool cepol = ff->getParam(ID::EN_POLARITY).as_bool();
+			  cell->setPort(ceport, cepol ? ce : pm.module->Not(NEW_ID, ce));
+		  }
+                  else
+			  cell->setPort(ceport, State::S1);
+
+		  for (auto c : Q.chunks()) {
+			  auto it = c.wire->attributes.find(ID::init);
+			  if (it == c.wire->attributes.end())
+				  continue;
+			  for (int i = c.offset; i < c.offset+c.width; i++) {
+				  log_assert(it->second[i] == State::S0 || it->second[i] == State::Sx);
+				  it->second[i] = State::Sx;
+			  }
+		  }
+		};
+                
+                //log("\nllpp:%d",st.ffA2);
+		if (st.ffA2) {
+			SigSpec A = cell->getPort(ID::A);
+			f(A, st.ffA2, ID(CEA2), ID(RSTA));
+			if (st.ffA1) {
+				f(A, st.ffA1, ID(CEA1), IdString());
+				cell->setParam(ID(AREG), 2);
+				cell->setParam(ID(ACASCREG), 2);
+			}
+			else {
+				cell->setParam(ID(AREG), 1);
+				cell->setParam(ID(ACASCREG), 1);
+			}
+			pm.add_siguser(A, cell);
+			cell->setPort(ID::A, A);
+		}
+		if (st.ffB2) {
+			SigSpec B = cell->getPort(ID::B);
+			f(B, st.ffB2, ID(CEB2), ID(RSTB));
+			if (st.ffB1) {
+				f(B, st.ffB1, ID(CEB1), IdString());
+				cell->setParam(ID(BREG), 2);
+				cell->setParam(ID(BCASCREG), 2);
+			}
+			else {
+				cell->setParam(ID(BREG), 1);
+				cell->setParam(ID(BCASCREG), 1);
+			}
+			pm.add_siguser(B, cell);
+			cell->setPort(ID::B, B);
+		}
+		if (st.ffD) {
+			SigSpec D = cell->getPort(ID::D);
+			f(D, st.ffD, ID(CED), ID(RSTD));
+			pm.add_siguser(D, cell);
+			cell->setPort(ID::D, D);
+			cell->setParam(ID(DREG), 1);
+		}
+		if (st.ffM) {
+			SigSpec M; // unused
+			f(M, st.ffM, ID(CEM), ID(RSTM));
+			st.ffM->connections_.at(ID::Q).replace(st.sigM, pm.module->addWire(NEW_ID, GetSize(st.sigM)));
+			cell->setParam(ID(MREG), State::S1);
+		}
+		if (st.ffP) {
+			SigSpec P; // unused
+			f(P, st.ffP, ID(CEP), ID(RSTP));
+			st.ffP->connections_.at(ID::Q).replace(st.sigP, pm.module->addWire(NEW_ID, GetSize(st.sigP)));
+			cell->setParam(ID(PREG), State::S1);
+		}
+
+		log("  clock: %s (%s)", log_signal(st.clock), "posedge");
+
+		if (st.ffA2) {
+			log(" ffA2:%s", log_id(st.ffA2));
+			if (st.ffA1)
+				log(" ffA1:%s", log_id(st.ffA1));
+		}
+
+		if (st.ffAD)
+			log(" ffAD:%s", log_id(st.ffAD));
+
+		if (st.ffB2) {
+			log(" ffB2:%s", log_id(st.ffB2));
+			if (st.ffB1)
+				log(" ffB1:%s", log_id(st.ffB1));
+		}
+
+		if (st.ffD)
+			log(" ffD:%s", log_id(st.ffD));
+
+		if (st.ffM)
+			log(" ffM:%s", log_id(st.ffM));
+
+		if (st.ffP)
+			log(" ffP:%s", log_id(st.ffP));
+	}
+	log("\n");
+
+	SigSpec P = st.sigP;
+	if (GetSize(P) < 48)
+		P.append(pm.module->addWire(NEW_ID, 48-GetSize(P)));
+	cell->setPort(ID::P, P);
+
+	pm.blacklist(cell);
 }
+/*void add_flag(add_flag_pm &pm)
+{
+	auto &st = pm.st_add_flag;
+        
+	log_debug("Process $add unit, to avoid DSP48E2 and pirdsp2 pack error.\n");
+	Cell *cell = st.add;
 
+	if (st.ffA && st.ffB) {
+			cell->setParam(ID(PACK), 1);
+		}
+         
+	pm.blacklist(cell);
 
+}*/
 struct XilinxDspPass : public Pass {
 	XilinxDspPass() : Pass("xilinx_dsp", "Xilinx: pack resources into DSPs") { }
 	void help() override
@@ -1618,11 +1880,15 @@ struct XilinxDspPass : public Pass {
 				xilinx_dsp48a_pm pm(module, module->selected_cells());
 				pm.run_xilinx_dsp48a_pack(xilinx_dsp48a_pack);
 			} else if (family == "xcu") {
+				//add_flag_pm pmm(module, module->selected_cells());
+				//pmm.run_add_flag(add_flag);
 				xilinx_dsp48e2_pm pm(module, module->selected_cells());
 				pm.run_xilinx_dsp48e2_pack(xilinx_dsp48e2_pack);
 			} else if (family == "pirdsp"||family == "apirdsp") {
-				pirdsp_pm pm(module, module->selected_cells());
-				pm.run_pirdsp_pack(pirdsp_pack);
+				//pirdsp_pm pm(module, module->selected_cells());
+				//pm.run_pirdsp_pack(pirdsp_pack); 
+                                apirdsp_pm pm(module, module->selected_cells());
+				pm.run_apirdsp_pack(apirdsp_pack);
 			}
 			// Separating out CREG packing is necessary since there
 			//   is no guarantee that the cell ordering corresponds
